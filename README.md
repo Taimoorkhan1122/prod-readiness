@@ -27,30 +27,8 @@ and operational blind spots.
 
 ## Set it up once
 
-You need **Claude Code** installed on your computer. Then download this plugin
-folder once.
-
-### Download the plugin
-
-Open Terminal (Mac) or PowerShell (Windows), then copy and run these two lines:
-
-```bash
-git clone https://github.com/Taimoorkhan1122/prod-readiness.git
-cd prod-readiness
-```
-
-This creates a `prod-readiness` folder in your current location. Keep this
-folder where it is after setup.
-
-If you already downloaded this repository, skip this step.
-
-### Before you begin
-
-Make sure you have:
-
-1. **Claude Code** installed on your computer.
-2. The `prod-readiness` folder from the step above. Do not delete or move it
-   after setup.
+You only need **Claude Code** installed on your computer. You do not need to
+download, clone, or keep a copy of this repository.
 
 ### First-time setup
 
@@ -62,19 +40,14 @@ Make sure you have:
    claude
    ```
 
-2. Tell Claude Code where this plugin folder is. Copy this line into Claude
-   Code, replace the example path with the folder's location on your computer,
-   then press Enter:
+2. Add this GitHub marketplace. Copy this line into Claude Code and press
+   Enter:
 
    ```text
-   /plugin marketplace add /absolute/path/to/prod-readiness
+   /plugin marketplace add Taimoorkhan1122/prod-readiness
    ```
 
-   **What is the folder location?** It is the full address of the
-   `prod-readiness` folder. On a Mac, you can type the command followed by a
-   space, then drag the folder from Finder into the terminal window. On Windows,
-   right-click the folder and choose **Copy as path**, then paste it after the
-   command.
+   Claude Code downloads the marketplace directly from GitHub.
 
 3. Install the plugin by copying this line into Claude Code and pressing Enter:
 
@@ -108,10 +81,10 @@ available in future Claude Code sessions.
 The audit only reads your project. It does not change your source code or
 publish anything.
 
-## Optional: temporary trial
+## Optional: use a local copy while developing
 
-If you only want to try the plugin once, without installing it, start Claude
-Code from the project you want to check:
+If you are changing this plugin yourself, you can run it from a local folder
+without installing it:
 
 ```bash
 cd /path/to/project-you-want-to-check
