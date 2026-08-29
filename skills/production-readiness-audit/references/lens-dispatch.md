@@ -20,7 +20,7 @@ Read `lens_signals` from `absence-ledger.json` and decide:
 Record every skip with its reason:
 
 ```bash
-python3 <plugin>/scripts/audit_state.py set-lenses <root> \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit_state.py" set-lenses <root> \
   --run security,backend,devops,qa,database \
   --skip frontend="no frontend code found in repository" \
   --skip ai-security="no LLM or model provider SDK found in repository"
@@ -82,7 +82,7 @@ the reply is a receipt.
 Run the validator between waves, not only at the end:
 
 ```bash
-python3 <plugin>/scripts/validate_findings.py <root>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_findings.py" <root>
 ```
 
 Catching a malformed block after three findings is cheap. Catching it after

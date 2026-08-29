@@ -64,6 +64,18 @@ download, clone, or keep a copy of this repository.
 That is it. You only need to do these four steps once. The plugin will be
 available in future Claude Code sessions.
 
+### If Claude starts a generic review instead
+
+Run the audit directly with this command. It is the guaranteed way to start the
+staged production-readiness workflow:
+
+```text
+/prod-readiness:production-readiness-audit
+```
+
+You should see Claude create a `.readiness-audit/` folder before it begins the
+review. If you do not see that folder, stop the run and use the command above.
+
 ## Use it on a project
 
 1. Open Claude Code in the folder for the app or website you want to check.

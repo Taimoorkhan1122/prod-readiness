@@ -50,14 +50,14 @@ find, and what you simply cannot see from here.
 └── report.md                       # Stage 5
 ```
 
-`<plugin>` below is this plugin's own directory, available as
-`${CLAUDE_PLUGIN_ROOT}`. Resolve it once at Stage 0 and pass the absolute path
-to the agents, since they run in their own context.
+`${CLAUDE_PLUGIN_ROOT}` is this plugin's own directory. Use it directly for all
+bundled scripts. Resolve and pass its absolute value to the lens agents, since
+they run in their own context.
 
 ## Stage 0 - preflight
 
 ```bash
-python3 <plugin>/scripts/audit_state.py status <root>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit_state.py" status <root>
 ```
 
 If state exists, tell the user which stage it stopped at and offer to resume or
@@ -83,8 +83,8 @@ inferred value `assumed`, and flag the assumptions that would change findings.
 ## Stage 2 - the evidence pass
 
 ```bash
-python3 <plugin>/scripts/evidence_scan.py <root>     # what exists
-python3 <plugin>/scripts/absence_probe.py <root>     # what was searched for
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/evidence_scan.py" <root>     # what exists
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/absence_probe.py" <root>     # what was searched for
 ```
 
 The second one is the load-bearing script. It runs roughly ninety deterministic
@@ -126,7 +126,7 @@ lens back with the validator output rather than editing its findings yourself.
 ## Stage 4 - validation
 
 ```bash
-python3 <plugin>/scripts/validate_findings.py <root>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_findings.py" <root>
 ```
 
 Exit code 1 means the report is blocked. The checks are the rules that are easy
@@ -143,7 +143,7 @@ usually that it should have been UNVERIFIED.
 ## Stage 5 - report
 
 ```bash
-python3 <plugin>/scripts/assemble_report.py <root>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assemble_report.py" <root>
 ```
 
 This generates every section that is arithmetic and leaves `<!-- FILL -->`

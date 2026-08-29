@@ -1,0 +1,15 @@
+{
+  "description": "Routes production-readiness requests into the staged audit workflow.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/route_readiness_prompt.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
