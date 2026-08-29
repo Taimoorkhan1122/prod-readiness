@@ -1,0 +1,13 @@
+{
+  "name": "prod-readiness-marketplace",
+  "owner": {
+    "name": "Taimoor"
+  },
+  "plugins": [
+    {
+      "name": "prod-readiness",
+      "source": "./",
+      "description": "Evidence-backed, seven-lens production readiness audit for Claude Code."
+    }
+  ]
+}

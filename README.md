@@ -1,109 +1,225 @@
 # prod-readiness
 
-A seven-lens production readiness audit for Claude Code. One orchestrator skill,
-seven read-only specialist agents, and five scripts that make the audit's
-central claim checkable rather than merely asserted.
+![Production-readiness audit signals converge on a go/no-go decision](assets/prod-readiness-banner.png)
 
-## Install
+**Production readiness and adversarial code-review skill for Claude Code and AI-generated apps. Audit security, tests, reliability, deployment risks, and launch blockers before you ship.**
+
+`prod-readiness` is a read-only, whole-repository audit for the question that
+matters after a prototype works: **is this safe to launch?** It produces an
+evidence-backed go/no-go report across security, backend, database, DevOps, QA,
+frontend, and AI-security concerns.
+
+It is for a production-readiness review, not a quick PR review or a code-style
+pass. The skill looks for the systems that commonly fail after launch: missing
+controls, untested recovery paths, unsafe trust boundaries, weak test coverage,
+and operational blind spots.
+
+## What you get
+
+- A production readiness checklist tailored to the repository and its context.
+- One shared evidence pass, reused by up to seven specialist review lenses.
+- An absence ledger that distinguishes **confirmed**, **not found**, and
+  **unverified** controls.
+- A validated, CTO-readable verdict: **SHIP**, **FIX THEN SHIP**, or
+  **HOLD - DO NOT DEPLOY**.
+- A persistent audit trail under `.readiness-audit/`, safe to resume after a
+  cleared session or interruption.
+
+## Set it up once
+
+You need **Claude Code** installed on your computer. Then download this plugin
+folder once.
+
+### Download the plugin
+
+Open Terminal (Mac) or PowerShell (Windows), then copy and run these two lines:
 
 ```bash
-# try it without installing
-claude --plugin-dir /path/to/prod-readiness
-
-# or keep it loaded automatically
-cp -r prod-readiness ~/.claude/skills/prod-readiness   # loads as prod-readiness@skills-dir
+git clone https://github.com/Taimoorkhan1122/prod-readiness.git
+cd prod-readiness
 ```
 
-Then, in any repository:
+This creates a `prod-readiness` folder in your current location. Keep this
+folder where it is after setup.
 
-> is this ready for production?
+If you already downloaded this repository, skip this step.
 
-The skill triggers on launch, deploy, go/no-go, and "what's missing" phrasing.
-You can also invoke a single lens directly with
-`@agent-prod-readiness:lens-security`.
+### Before you begin
 
-## What it does
+Make sure you have:
 
+1. **Claude Code** installed on your computer.
+2. The `prod-readiness` folder from the step above. Do not delete or move it
+   after setup.
+
+### First-time setup
+
+1. Open Claude Code.
+
+   If you normally use Terminal, open it and type:
+
+   ```bash
+   claude
+   ```
+
+2. Tell Claude Code where this plugin folder is. Copy this line into Claude
+   Code, replace the example path with the folder's location on your computer,
+   then press Enter:
+
+   ```text
+   /plugin marketplace add /absolute/path/to/prod-readiness
+   ```
+
+   **What is the folder location?** It is the full address of the
+   `prod-readiness` folder. On a Mac, you can type the command followed by a
+   space, then drag the folder from Finder into the terminal window. On Windows,
+   right-click the folder and choose **Copy as path**, then paste it after the
+   command.
+
+3. Install the plugin by copying this line into Claude Code and pressing Enter:
+
+   ```text
+   /plugin install prod-readiness@prod-readiness-marketplace
+   ```
+
+4. Turn it on now by copying this line into Claude Code and pressing Enter:
+
+   ```text
+   /reload-plugins
+   ```
+
+That is it. You only need to do these four steps once. The plugin will be
+available in future Claude Code sessions.
+
+## Use it on a project
+
+1. Open Claude Code in the folder for the app or website you want to check.
+2. Ask a plain-English question, such as:
+
+   > Is this ready for production?
+
+   > What needs fixing before I launch this app?
+
+   > Is this AI-generated app safe to put in front of real users?
+
+3. Answer the audit's questions about your app. It will then review the project
+   and give you a go/no-go report.
+
+The audit only reads your project. It does not change your source code or
+publish anything.
+
+## Optional: temporary trial
+
+If you only want to try the plugin once, without installing it, start Claude
+Code from the project you want to check:
+
+```bash
+cd /path/to/project-you-want-to-check
+claude --plugin-dir /absolute/path/to/prod-readiness
 ```
-Stage 0  preflight        git ref, dirty check, resume-or-restart
-Stage 1  context          criticality, RTO/RPO, scale, threat model, scope
-Stage 2  evidence         evidence_scan.py + absence_probe.py + a semantic map
-Stage 3  lenses           two waves of read-only agents over that one evidence body
-Stage 4  validation       validate_findings.py blocks the report on rule breaks
-Stage 5  report           assemble_report.py, then the narrative sections
+
+This temporary option ends when you close Claude Code.
+
+## Optional: manage the installation
+
+To remove the plugin later, open Claude Code and enter:
+
+```text
+/plugin uninstall prod-readiness@prod-readiness-marketplace
 ```
 
-Everything persists under `.readiness-audit/`, so the run survives `/clear`, a
-crash, or a week-long gap.
+If you edit the plugin files yourself, enter `/reload-plugins` in Claude Code
+to use the latest changes.
 
-## The idea worth explaining
+## How the audit works
 
-The hardest rule in a "find what's missing" audit is the one a language model
-will quietly break: telling apart what it proved, what it searched for and did
-not find, and what it cannot see at all. Asked to find absences, a model
-produces confident ones.
-
-So absence is made mechanical. `absence_probe.py` runs about ninety
-deterministic control probes and records, per control, the patterns searched,
-the hit count, and the paths. A `[NOT FOUND]` finding is only valid if it cites
-a ledger row with zero hits — `validate_findings.py` rejects it otherwise.
-
-The ledger also decides *which* state a miss deserves. Controls that normally
-live outside a repository (backups, PITR, alert routing) prove nothing by being
-absent from source, so they default to `[UNVERIFIED]` — unless the repo ships
-infrastructure-as-code, in which case the repo is the right place to look and
-the same silence becomes a real `[NOT FOUND]`.
-
-A second table handles proportionality: controls that depend on something the
-system does not have are marked not-applicable rather than missing. No broker
-means no dead-letter-queue finding. That is what keeps the report from filling
-up with demands for machinery the system has no use for.
-
-## Design choices worth knowing
-
-**One evidence pass, seven evaluations.** Stage 2 scans once; the lenses consume
-the pack. Seven agents each scanning the repository would cost seven times as
-much for a worse result, since they would also disagree about what they saw.
-
-**Two waves, not seven in parallel.** Agents cannot see each other. Security,
-backend, and database run first because they own most cross-lens findings; the
-rest run second and reference wave-1 findings by ID instead of duplicating them.
-
-**No agent memory.** Subagents support persistent memory and it is tempting
-here. It is deliberately off: an audit that remembers "this repo has rate
-limiting" from three months ago will assert it again without looking. Fresh eyes
-every run is the point.
-
-**Agents get `Write` but not `Edit`.** They write only their own findings file.
-Plugin subagents ignore `hooks`, `mcpServers`, and `permissionMode`, so the
-read-only rule is enforced by prompt rather than by policy — if you want it
-enforced hard, copy the agent files into `.claude/agents/` and add a `PreToolUse`
-hook.
-
-**It audits and stops.** No source file is ever modified. For remediation with
-tests proving each fix, hand off to a separate skill.
-
-## Layout
-
+```text
+Stage 0  Preflight    Record the git ref, working-tree state, and resume point
+Stage 1  Context      Set criticality, RTO/RPO, scale, threat model, and scope
+Stage 2  Evidence     Scan the repository and create an absence ledger
+Stage 3  Review       Run read-only specialist lenses in two coordinated waves
+Stage 4  Validate     Reject findings that do not meet evidence rules
+Stage 5  Report       Assemble the go/no-go report and remaining judgement
 ```
+
+The seven lenses cover security, backend, database, DevOps, QA, frontend, and
+AI security. Lenses with no signal are explicitly skipped rather than inventing
+findings.
+
+## Evidence, not confident guesses
+
+Production-readiness audits often confuse three different states:
+
+| State | Meaning |
+| --- | --- |
+| `CONFIRMED` | The control or risk was proven from evidence in scope. |
+| `NOT FOUND` | The repository was searched for the control and the audit can support its absence. |
+| `UNVERIFIED` | The control may exist outside the reviewed scope, so source silence proves nothing. |
+
+`absence_probe.py` runs deterministic control probes and records the patterns,
+hit counts, and paths in an absence ledger. `validate_findings.py` blocks the
+report when a finding makes a claim its evidence cannot support.
+
+This is especially important for deployment and operations concerns. A missing
+backup configuration in application code is normally **unverified**; the same
+silence in repository-owned infrastructure-as-code can become **not found**.
+
+## Design principles
+
+**One evidence pass, seven evaluations.** The repository is scanned once. Every
+specialist lens works from that same evidence pack, reducing cost and avoiding
+contradictory claims.
+
+**Read-only audit.** The skill does not alter source, configuration, tests, or
+dependencies. It writes only the audit trail under `.readiness-audit/`.
+
+**Context controls severity.** A missing rate limiter means something different
+for a public payments API than for an internal VPN-only tool. The audit captures
+criticality, scale, recovery expectations, and threat model before judging risk.
+
+**Audit, then stop.** Findings are not silently fixed. Use a separate,
+approval-gated remediation workflow when you are ready to change the code.
+
+## Audit output
+
+```text
+.readiness-audit/
+├── context.md                    # criticality, RTO/RPO, scale, threat model
+├── scope.md                      # reviewed and excluded systems
+├── evidence/
+│   ├── inventory.json            # discovered repository facts
+│   ├── absence-ledger.{json,md}  # deterministic control probes
+│   └── map.md                    # architecture and trust boundaries
+├── findings/<lens>.md            # one file per specialist lens
+├── deferred.md                   # controls not yet applicable
+└── report.md                     # validated production-readiness verdict
+```
+
+Consider adding `.readiness-audit/` to `.gitignore` unless you intentionally
+want audit records checked into version control.
+
+## Tune the audit
+
+Add a control by appending a `C(...)` entry to `CONTROLS` in
+`scripts/absence_probe.py`. Add it to `REQUIRES` when it applies only if another
+system exists. Every applicable lens receives the new control through the shared
+ledger.
+
+To pin a model for a lens, set `model: haiku` or `model: sonnet` in that agent's
+frontmatter. The default is `inherit`.
+
+## Repository layout
+
+```text
 .claude-plugin/plugin.json
 agents/lens-{security,backend,frontend,devops,qa,database,ai-security}.md
 skills/production-readiness-audit/
   SKILL.md
   references/{context-intake,lens-dispatch,finding-format,report-writing}.md
 scripts/
-  audit_state.py        stage pointer, git ref, lens run/skip decisions
-  evidence_scan.py      what exists: manifests, entry points, IaC, tests, migrations
-  absence_probe.py      what was searched for: the absence ledger
-  validate_findings.py  the quality gate
-  assemble_report.py    Sections A-K, arithmetic filled, judgement left as FILL markers
+  audit_state.py
+  evidence_scan.py
+  absence_probe.py
+  validate_findings.py
+  assemble_report.py
 ```
-
-## Tuning
-
-Add a control: append a `C(...)` entry to `CONTROLS` in `absence_probe.py`, and
-add it to `REQUIRES` if it only applies when something else is present. Every
-lens picks it up automatically through the ledger.
-
-Pin models per lens by setting `model: haiku` or `model: sonnet` in an agent's
-frontmatter; the default is `inherit`.
