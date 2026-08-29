@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prototype — Production readiness dashboard hierarchy</title>
+    <style>
+      :root { color-scheme: light; --ink:#18222c; --muted:#62707c; --paper:#f7f7f5; --line:#dbe0df; --green:#087f5b; --amber:#b56800; --red:#c23934; --blue:#2d63c8; --navy:#11263d; }
+      * { box-sizing: border-box; }
+      body { margin:0; min-width:320px; color:var(--ink); background:var(--paper); font: 15px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      button, a { font: inherit; } button { cursor:pointer; }
+      ::selection { background:#c7e7da; color:var(--ink); }
+      .shell { max-width:1180px; margin:auto; padding:32px 28px 112px; }
+      .site-head { display:flex; align-items:center; justify-content:space-between; gap:20px; padding-bottom:22px; border-bottom:1px solid var(--line); }
+      .brand { display:flex; align-items:center; gap:11px; font-weight:750; letter-spacing:-.025em; }
+      .mark { width:26px; height:26px; border-radius:9px 9px 9px 2px; background:var(--navy); position:relative; }
+      .mark:after { content:""; width:8px; height:8px; background:#8fe0bf; border-radius:50%; position:absolute; right:5px; top:5px; }
+      .live { color:var(--green); font-size:.84rem; font-weight:650; display:flex; align-items:center; gap:7px; }
+      .live:before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 0 5px #d9f3e8; }
+      h1,h2,h3,p { margin:0; } h1 { max-width:18ch; font-size:clamp(2.3rem,5vw,4.9rem); line-height:.96; letter-spacing:-.065em; } h2 { font-size:1.22rem; letter-spacing:-.025em; } h3 { font-size:1rem; letter-spacing:-.015em; }
+      .lede { max-width:59ch; color:var(--muted); font-size:1.05rem; margin-top:18px; }
+      .label { color:var(--muted); text-transform:uppercase; letter-spacing:.095em; font-size:.7rem; font-weight:750; }
+      .chip { display:inline-flex; align-items:center; padding:5px 9px; border-radius:999px; font-size:.76rem; font-weight:750; border:1px solid currentColor; white-space:nowrap; }
+      .hold { color:var(--red); background:#fff3f2; }.fix { color:var(--amber); background:#fff8e9; }.ship { color:var(--green); background:#eefbf5; }.info { color:var(--blue); background:#eff5ff; }
+      .metric { font-variant-numeric:tabular-nums; letter-spacing:-.05em; }
+      .small { color:var(--muted); font-size:.86rem; }
+      .rule { height:1px; background:var(--line); }
+      .action { background:var(--navy); color:white; border:0; border-radius:10px; padding:10px 13px; font-weight:700; box-shadow:0 5px 12px rgba(0,0,0,.16); }
+      .action:hover { background:#1d4268; }.action:focus-visible,.switcher button:focus-visible,a:focus-visible { outline:3px solid #8db1f4; outline-offset:3px; }
+      .matrix { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+      .lens { min-height:92px; padding:11px 10px; border-radius:12px; border:1px solid var(--line); background:white; display:flex; flex-direction:column; justify-content:space-between; }
+      .lens.running { border-color:#79a2e9; background:#f1f6ff; }.lens.done { border-color:#9bd8bf; background:#f3fcf7; }.lens.wait { opacity:.72; }
+      .lens b { font-size:.82rem; }.lens em { color:var(--muted); font-size:.72rem; font-style:normal; }
+      .dot { width:8px; height:8px; border-radius:50%; background:#aeb8bf; }.dot.green { background:var(--green); }.dot.blue { background:var(--blue); }.dot.amber { background:var(--amber); }
+      .row { display:grid; grid-template-columns:26px minmax(160px,1fr) auto; gap:12px; align-items:start; padding:16px 0; border-bottom:1px solid var(--line); }.row:last-child { border:0; }
+      .sev { width:26px; height:26px; display:grid; place-items:center; border-radius:8px; font-size:.72rem; font-weight:800; }.p0{background:#ffdfdd;color:#972824}.p1{background:#fff0cb;color:#925700}.p2{background:#e3edff;color:#2859a8}
+      .finding-title { font-weight:750; letter-spacing:-.018em; }.finding-meta { color:var(--muted); font-size:.83rem; margin-top:2px; }
+      .bottom-note { color:var(--muted); font-size:.78rem; margin-top:14px; }
+      .switcher { position:fixed; z-index:5; left:50%; bottom:18px; transform:translateX(-50%); display:flex; align-items:center; gap:5px; padding:6px; border:1px solid #cbd3d6; border-radius:15px; background:rgba(255,255,255,.95); box-shadow:0 16px 35px rgba(23,35,47,.17); backdrop-filter:blur(8px); }
+      .switcher button { border:0; background:transparent; color:var(--ink); width:35px; height:32px; border-radius:9px; font-weight:800; }.switcher button:hover { background:#edf0ef; }.switcher span { min-width:170px; text-align:center; color:var(--muted); font-size:.77rem; font-weight:700; }
+      .prototype-note { position:fixed; left:0; top:0; right:0; z-index:4; text-align:center; padding:5px; background:#f8df9c; color:#654600; font-size:.73rem; font-weight:700; }
+      .prototype-note + .shell { padding-top:52px; }
+      /* Variant A: verdict-first mission control */
+      .mission-hero { display:grid; grid-template-columns:1.35fr .65fr; gap:34px; padding:64px 0 42px; }.verdict-panel { align-self:end; padding:24px; border-radius:16px; background:var(--navy); color:#f9fbfa; box-shadow:0 16px 33px rgba(0,0,0,.18); }.verdict-panel .label,.verdict-panel .small { color:#b8c9d7; }.verdict-panel .metric { font-size:3.9rem; line-height:.9; margin:10px 0 18px; }.verdict-panel .chip { color:#ffb4af; background:#3c2633; }.mission-sections { display:grid; grid-template-columns:1.4fr .6fr; gap:34px; padding-top:34px; }.score-list { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }.score { padding:16px 0; border-top:1px solid var(--line); }.score strong { display:block; font-size:2.2rem; line-height:1; }.score span { color:var(--muted); font-size:.78rem; }
+      /* Variant B: finding-first review queue */
+      .queue-head { padding:60px 0 29px; display:flex; justify-content:space-between; gap:30px; align-items:end; }.queue-grid { display:grid; grid-template-columns:2fr .8fr; gap:35px; align-items:start; }.queue { background:white; border:1px solid var(--line); border-radius:16px; padding:8px 22px; }.queue-side { position:sticky; top:22px; }.side-block { padding:19px 0; border-bottom:1px solid var(--line); }.side-block:last-child{border-bottom:0}.stage { display:flex; gap:10px; margin-top:13px; align-items:center; }.stage span:nth-child(2) { flex:1; }.bar { height:5px; width:66px; overflow:hidden; border-radius:9px; background:#e1e6e7; }.bar i { display:block; height:100%; background:var(--green); border-radius:inherit; }.queue-count { display:flex; gap:8px; margin-top:17px; flex-wrap:wrap; }
+      /* Variant C: live audit story */
+      .story-head { padding:59px 0 29px; }.story-grid { display:grid; grid-template-columns:.75fr 1.25fr; gap:46px; align-items:start; }.timeline { border-left:2px solid #ccd7d8; padding-left:24px; margin-left:10px; }.event { position:relative; padding:0 0 28px; }.event:before { content:""; position:absolute; width:12px; height:12px; border:3px solid var(--paper); border-radius:50%; background:#abb7bc; left:-31px; top:3px; }.event.done:before{background:var(--green)}.event.now:before{background:var(--blue);box-shadow:0 0 0 5px #dce9ff}.event .time{color:var(--muted);font-size:.77rem}.event p{margin-top:3px;font-size:.9rem}.story-focus { background:#fff; border:1px solid var(--line); border-radius:16px; padding:26px; }.current { display:flex; justify-content:space-between; gap:18px; align-items:start; padding-bottom:23px; border-bottom:1px solid var(--line); }.current .metric{font-size:3rem;line-height:.9}.evidence { margin-top:22px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }.evidence div{padding:13px 0;border-top:1px solid var(--line)}.evidence strong{display:block;font-size:1.8rem;line-height:1}.evidence span{color:var(--muted);font-size:.76rem}
+      @media (max-width:780px){.shell{padding:22px 18px 108px}.site-head{padding-bottom:16px}.mission-hero,.mission-sections,.queue-grid,.story-grid{grid-template-columns:1fr;gap:25px}.mission-hero{padding:39px 0 24px}.queue-head{padding:40px 0 22px;display:block}.queue-head .action{margin-top:18px}.queue-side{position:static}.matrix{grid-template-columns:repeat(3,1fr)}.score-list,.evidence{grid-template-columns:repeat(3,1fr)}.story-head{padding:40px 0 23px}.switcher span{min-width:145px}.verdict-panel .metric{font-size:3.2rem}}
+      @media (max-width:450px){.live{font-size:0}.live:before{margin:0}.matrix{grid-template-columns:repeat(2,1fr)}.score-list,.evidence{grid-template-columns:1fr}.row{grid-template-columns:26px 1fr}.row .chip{grid-column:2}.switcher{bottom:12px}.switcher span{min-width:132px}}
+    </style>
+  </head>
+  <body>
+    <!--
+      THESIS: A production-readiness viewer should make its current decision obvious before asking a user to read its evidence.
+      OWN-WORLD: Quiet operations notebook — warm paper, navy ink, green/amber/red evidence states, precise lines instead of card stacks.
+      STORY: A user sees whether to ship, what is happening now, and where the real risk lives without losing the evidence trail.
+      FIRST VIEWPORT: Each variation exposes a different first question: decision, work queue, or live progress. The bottom switcher is intentionally prototype-only.
+      FORM: Three static hierarchy experiments, code-led, no production visual system implied.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+    -->
+    <div class="prototype-note">THROWAWAY PROTOTYPE — choose a hierarchy; none of this is the shipped dashboard.</div>
+    <main id="app" class="shell"></main>
+    <nav class="switcher" aria-label="Prototype variants">
+      <button id="previous" aria-label="Previous variant">←</button>
+      <span id="variant-label" aria-live="polite"></span>
+      <button id="next" aria-label="Next variant">→</button>
+    </nav>
+    <script>
+      const variants = [
+        { key: 'A', name: 'Mission Control' },
+        { key: 'B', name: 'Review Queue' },
+        { key: 'C', name: 'Audit Story' }
+      ];
+      const data = {
+        lenses: [['Security','done'],['Backend','done'],['Database','done'],['DevOps','running'],['QA','running'],['Frontend','wait'],['AI security','wait']],
+        findings: [
+          ['P0','Public write endpoint accepts requests without rate limiting','Security · CONFIRMED'],
+          ['P1','No restore drill was found for production data','Database · NOT FOUND'],
+          ['P1','Critical checkout path lacks an end-to-end test','QA · CONFIRMED'],
+          ['P2','Alert routing is outside reviewed repository scope','DevOps · UNVERIFIED']
+        ]
+      };
+      const head = (live = true) => `<header class="site-head"><div class="brand"><span class="mark"></span> prod-readiness</div><div class="${live ? 'live' : 'small'}">${live ? 'Watching audit files' : 'Final report'}</div></header>`;
+      const lenses = () => `<div class="matrix">${data.lenses.map(([name,status]) => `<div class="lens ${status}"><span class="dot ${status === 'done' ? 'green' : status === 'running' ? 'blue' : ''}"></span><b>${name}</b><em>${status === 'done' ? 'Complete' : status === 'running' ? 'Reviewing now' : 'Waiting'}</em></div>`).join('')}</div>`;
+      const findings = (limit = 4) => data.findings.slice(0,limit).map(([severity,title,meta]) => `<article class="row"><span class="sev ${severity.toLowerCase()}">${severity}</span><div><div class="finding-title">${title}</div><div class="finding-meta">${meta}</div></div><span class="chip ${severity === 'P0' ? 'hold' : severity === 'P1' ? 'fix' : 'info'}">${severity === 'P0' ? 'Blocks ship' : 'Needs review'}</span></article>`).join('');
+      const mission = () => `${head()}<section class="mission-hero"><div><p class="label">Production readiness audit</p><h1>Know the decision before you read the report.</h1><p class="lede">One shared evidence pass, seven specialist lenses, and a verdict that stays honest about what is still unknown.</p></div><aside class="verdict-panel"><p class="label">Current verdict</p><div class="metric">HOLD</div><span class="chip">1 launch blocker</span><p class="small" style="margin-top:18px">Security, backend, and database are complete. Two lenses are reviewing now.</p></aside></section><section class="mission-sections"><div><p class="label" style="margin-bottom:12px">Lens progress</p>${lenses()}<p class="bottom-note">Auto-refreshing · last file change 8 seconds ago</p></div><aside><p class="label">Risk picture</p><div class="score-list"><div class="score"><strong class="metric">1</strong><span>P0 blocker</span></div><div class="score"><strong class="metric">2</strong><span>P1 risks</span></div><div class="score"><strong class="metric">4</strong><span>Unverified</span></div></div><button class="action" style="margin-top:20px">Open report ↗</button></aside></section>`;
+      const queue = () => `${head()}<section class="queue-head"><div><p class="label">Production readiness audit</p><h1>Fix what keeps this from shipping.</h1><p class="lede">A triage-first view for the moment the team needs to turn an audit into an ordered work queue.</p></div><button class="action">Open evidence ledger ↗</button></section><section class="queue-grid"><div class="queue"><div class="row"><div></div><div><h2>Findings requiring a decision</h2><p class="small">4 evidence-backed items in this review</p></div></div>${findings()}</div><aside class="queue-side"><div class="side-block"><p class="label">Ship status</p><p style="margin-top:9px"><span class="chip hold">HOLD — do not deploy</span></p></div><div class="side-block"><p class="label">Audit progress</p>${data.lenses.slice(0,5).map(([name,status],i) => `<div class="stage"><span class="dot ${status === 'done' ? 'green' : status === 'running' ? 'blue' : ''}"></span><span class="small">${name}</span><span class="bar"><i style="width:${status === 'done' ? 100 : status === 'running' ? 58 : 0}%"></i></span></div>`).join('')}</div><div class="side-block"><p class="label">Evidence state</p><div class="queue-count"><span class="chip ship">12 confirmed</span><span class="chip fix">7 not found</span><span class="chip info">4 unverified</span></div></div></aside></section>`;
+      const story = () => `${head()}<section class="story-head"><p class="label">Live audit timeline</p><h1>The audit is building its case.</h1><p class="lede">A progress-first view for someone waiting to understand what the agents have inspected, proven, and still need.</p></section><section class="story-grid"><div class="timeline"><div class="event done"><span class="time">09:42</span><h3>Preflight recorded</h3><p>Git ref, dirty state, and parallel mode saved.</p></div><div class="event done"><span class="time">09:44</span><h3>Evidence map written</h3><p>218 files indexed; absence ledger ready.</p></div><div class="event now"><span class="time">09:47 · now</span><h3>Specialist lenses reviewing</h3><p>DevOps and QA are writing their findings.</p></div><div class="event"><span class="time">next</span><h3>Validate and assemble</h3><p>Findings will be checked before a verdict is written.</p></div></div><article class="story-focus"><div class="current"><div><p class="label">Current stage</p><div class="metric" style="margin-top:8px">3 / 5</div><p class="small" style="margin-top:8px">Specialist review</p></div><span class="chip info">Live refresh</span></div><div style="margin-top:22px"><h2>What the audit knows so far</h2><p class="small" style="margin-top:6px">Not a verdict yet. These counts update as agents write evidence-tagged findings.</p><div class="evidence"><div><strong class="metric">3</strong><span>complete lenses</span></div><div><strong class="metric">2</strong><span>active lenses</span></div><div><strong class="metric">7</strong><span>missing controls</span></div></div></div><div style="margin-top:25px"><p class="label" style="margin-bottom:7px">Latest signal</p><div class="finding-title">P0 rate-limit gap confirmed</div><div class="finding-meta">Security lens · file and line evidence linked in report</div></div></article></section>`;
+      function currentIndex() { const key = new URLSearchParams(location.search).get('variant'); return Math.max(0, variants.findIndex(v => v.key === key)); }
+      function render() { const index = currentIndex(); const variant = variants[index]; document.getElementById('app').innerHTML = variant.key === 'A' ? mission() : variant.key === 'B' ? queue() : story(); document.getElementById('variant-label').textContent = `${variant.key} · ${variant.name}`; }
+      function move(delta) { const index = (currentIndex() + delta + variants.length) % variants.length; const url = new URL(location); url.searchParams.set('variant', variants[index].key); history.replaceState({}, '', url); render(); }
+      document.getElementById('previous').addEventListener('click', () => move(-1)); document.getElementById('next').addEventListener('click', () => move(1));
+      window.addEventListener('keydown', event => { if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable) return; if (event.key === 'ArrowLeft') move(-1); if (event.key === 'ArrowRight') move(1); });
+      render();
+    </script>
+  </body>
+</html>
