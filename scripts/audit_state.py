@@ -8,7 +8,7 @@ reads its inputs from .readiness-audit/ and writes its outputs there before
 the next stage starts.
 
 Usage:
-    python3 audit_state.py init <project_root>
+    python3 audit_state.py init <project_root> [--execution-mode parallel|sequential]
     python3 audit_state.py status <project_root>
     python3 audit_state.py set-stage <project_root> <stage> <status> [--note TEXT]
     python3 audit_state.py set-lenses <project_root> --run a,b --skip c=reason
@@ -72,7 +72,7 @@ def _save(root: Path, state):
     _file(root).write_text(json.dumps(state, indent=2) + "\n")
 
 
-def cmd_init(root: Path):
+def cmd_init(root: Path, execution_mode: str):
     existing = _load(root)
     if existing:
         print(json.dumps({"already_initialised": True, "state": existing}, indent=2))
@@ -88,6 +88,7 @@ def cmd_init(root: Path):
         "dirty_files": (dirty.splitlines() if dirty else []),
         "stage": STAGES[0],
         "stage_status": "in_progress",
+        "execution_mode": execution_mode,
         "notes": [],
         "lenses_to_run": [],
         "lenses_skipped": {},
@@ -184,7 +185,12 @@ def cmd_archive(root: Path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("init", "status", "archive"):
+    s = sub.add_parser("init")
+    s.add_argument("project_root")
+    s.add_argument(
+        "--execution-mode", choices=("parallel", "sequential"), default="parallel"
+    )
+    for name in ("status", "archive"):
         s = sub.add_parser(name)
         s.add_argument("project_root")
     s = sub.add_parser("set-stage")
@@ -204,7 +210,7 @@ def main():
         return 1
 
     if args.cmd == "init":
-        return cmd_init(root)
+        return cmd_init(root, args.execution_mode)
     if args.cmd == "status":
         return cmd_status(root)
     if args.cmd == "archive":

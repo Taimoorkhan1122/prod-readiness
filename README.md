@@ -76,6 +76,53 @@ staged production-readiness workflow:
 You should see Claude create a `.readiness-audit/` folder before it begins the
 review. If you do not see that folder, stop the run and use the command above.
 
+### Choose how the agents run
+
+By default, the audit runs its independent specialist agents **in parallel**:
+security, backend, and database run together first; after their findings are
+checked, the remaining relevant lenses run together. This is the fastest mode.
+
+To run one agent at a time instead, use:
+
+```text
+/prod-readiness:production-readiness-audit sequential
+```
+
+You can also ask: “Run the production-readiness audit sequentially.” Sequential
+mode is useful when your computer has limited resources or you want to follow
+each specialist's work one step at a time.
+
+### Update or fix the installation
+
+The **marketplace** and the **plugin** are separate. Adding the marketplace
+does not install the plugin. To install or refresh `prod-readiness` for all of
+your projects, run these commands in Terminal:
+
+```bash
+claude plugin marketplace update prod-readiness-marketplace
+claude plugin install prod-readiness@prod-readiness-marketplace --scope user
+```
+
+Then restart Claude Code or run `/reload-plugins` inside Claude Code.
+
+If `claude plugin update` says the plugin is not installed at user scope, it
+was either never installed or was installed for one project only. Install it at
+user scope with the commands above, or update the scope where it already lives:
+
+```bash
+claude plugin update prod-readiness@prod-readiness-marketplace --scope local
+# or
+claude plugin update prod-readiness@prod-readiness-marketplace --scope project
+```
+
+To check where the plugin is installed and whether it is enabled:
+
+```bash
+claude plugin list --json
+```
+
+Use `@` directly in these commands. You do not need to type `\@`.
+
 ## Use it on a project
 
 1. Open Claude Code in the folder for the app or website you want to check.

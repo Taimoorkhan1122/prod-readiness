@@ -30,19 +30,45 @@ Skipping a lens because it has nothing to look at is proportionality. Skipping
 one because the audit is running long is not - say so plainly if you have to
 stop early, and mark the report incomplete.
 
-## Two waves, not one
+## Default: two parallel waves
 
 Dispatch in two waves rather than all seven at once. Agents run in isolated
 context windows and cannot see each other, so the wave split is what makes the
 cross-lens ownership table actually work:
 
 **Wave 1 - security, backend, database.** These own most shared findings
-(tenant isolation, cache leakage, event replay, backups). Run them together.
+(tenant isolation, cache leakage, event replay, backups). **Launch all three
+agents concurrently in the same assistant turn, then wait for all three.**
 
 **Wave 2 - devops, qa, frontend, ai-security.** These read wave 1's findings
 files before writing their own, so they can reference an existing ID with
-`see:` instead of duplicating. Tell them explicitly that
-`.readiness-audit/findings/*.md` already contains wave 1 output.
+`see:` instead of duplicating. After validating wave 1, **launch every selected
+wave-2 agent concurrently in the same assistant turn, then wait for all of
+them.** Tell them explicitly that `.readiness-audit/findings/*.md` already
+contains wave 1 output.
+
+Read `execution_mode` from `.readiness-audit/state.json`. If it is missing,
+treat the audit as `parallel` for backward compatibility. Parallel is the
+default; never downgrade to sequential merely because multiple agents are
+available.
+
+## Opt-in: sequential execution
+
+Only use this mode when `state.json` says `"execution_mode": "sequential"`.
+Launch one agent, wait for it to finish, validate its findings, then launch the
+next one in this fixed order:
+
+1. security
+2. backend
+3. database
+4. devops
+5. qa
+6. frontend (unless skipped)
+7. ai-security (unless skipped)
+
+The same ownership rules apply. Later lenses read the findings already written
+by earlier lenses, and every selected lens still runs unless the signal table
+above explicitly permits skipping it.
 
 ## The dispatch prompt
 

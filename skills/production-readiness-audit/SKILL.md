@@ -54,6 +54,26 @@ find, and what you simply cannot see from here.
 bundled scripts. Resolve and pass its absolute value to the lens agents, since
 they run in their own context.
 
+## Execution mode
+
+**Parallel is the default.** Unless the user explicitly asks for a sequential
+audit, launch each wave's lenses concurrently. Do not silently choose serial
+execution to simplify orchestration.
+
+Use **sequential** only when the user says `sequential`, asks for one agent at a
+time, or invokes `/prod-readiness:production-readiness-audit sequential`.
+Record the selected mode during preflight and preserve it when resuming:
+
+```bash
+# Default: parallel lenses within each wave
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit_state.py" init <root> \
+  --execution-mode parallel
+
+# Opt-in: one lens at a time
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit_state.py" init <root> \
+  --execution-mode sequential
+```
+
 ## Stage 0 - preflight
 
 ```bash
@@ -63,8 +83,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit_state.py" status <root>
 If state exists, tell the user which stage it stopped at and offer to resume or
 restart (restart archives the old run rather than deleting it: `audit_state.py
 archive`). Otherwise `init`, which records the git ref and whether the tree is
-dirty. If it is dirty, say what is uncommitted and let the user decide before
-proceeding - an audit of an ambiguous working tree is hard to act on later.
+dirty and execution mode. If it is dirty, say what is uncommitted and let the
+user decide before proceeding - an audit of an ambiguous working tree is hard
+to act on later.
 
 Offer to add `.readiness-audit/` to `.gitignore`.
 
