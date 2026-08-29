@@ -140,6 +140,89 @@ Use `@` directly in these commands. You do not need to type `\@`.
 The audit only reads your project. It does not change your source code or
 publish anything.
 
+## Use it with other AI coding agents
+
+The one-command marketplace installation above is for **Claude Code**. The
+audit itself is portable: its workflow, seven specialist lenses, and Python
+validation scripts live in this repository and can be used by other coding
+agents too.
+
+For Codex, OpenCode, Pi, Antigravity, or another coding agent, use the
+following simple route.
+
+### 1. Download the audit once
+
+Open Terminal and copy this command:
+
+```bash
+git clone https://github.com/Taimoorkhan1122/prod-readiness.git ~/prod-readiness
+```
+
+This creates a reusable copy in a folder named `prod-readiness` in your home
+folder. You need Python 3 installed. The audit writes its results only in the
+project being checked, under `.readiness-audit/`.
+
+### 2. Open the project you want to check
+
+Open your app's folder in your preferred AI coding agent. Do **not** open the
+`prod-readiness` folder unless you are changing the audit itself.
+
+### 3. Give the agent this prompt
+
+Paste the following into your agent. Replace `/Users/you/prod-readiness` with
+the location created in step 1. On Windows, use a path such as
+`C:\\Users\\you\\prod-readiness`.
+
+```text
+Read /Users/you/prod-readiness/skills/production-readiness-audit/SKILL.md and
+run it against the project currently open. Treat /Users/you/prod-readiness as
+the plugin root: whenever the skill says ${CLAUDE_PLUGIN_ROOT}, substitute that
+exact path. Keep the audit read-only except for .readiness-audit/ in this
+project. Run independent lens agents in parallel by default; use sequential
+mode only if I explicitly ask for it or this agent cannot run parallel agents.
+```
+
+The first time, the agent may ask about the app's criticality, recovery goals,
+scale, and threat model. Answer those questions before it starts the evidence
+pass.
+
+### Codex
+
+Open the project in Codex, then paste the shared prompt from step 3. Codex can
+use reusable skills, but this repository is not yet packaged as a native Codex
+plugin. The shared prompt is the reliable route because it tells Codex where
+the bundled Python scripts and lens instructions live.
+
+### OpenCode
+
+Open the target project in OpenCode and paste the shared prompt from step 3.
+OpenCode supports skills, including Claude-compatible skill layouts, but this
+repository's Claude marketplace manifest and automatic prompt hook are
+Claude-specific. The shared prompt runs the portable audit workflow without
+depending on those features.
+
+### Pi
+
+Open the target project in Pi and paste the shared prompt from step 3. Pi can
+load Agent Skills, but the Claude marketplace wrapper and automatic prompt
+routing do not transfer. The prompt explicitly loads this audit's `SKILL.md`
+and gives Pi the correct root for its scripts.
+
+### Google Antigravity
+
+Open the target project in Antigravity and paste the shared prompt from step 3.
+Antigravity supports skills and parallel subagents; when they are available,
+the audit uses its normal two-wave parallel review. The explicit prompt is
+needed because this repository does not yet ship an Antigravity-native plugin
+package.
+
+### Any other AI coding agent
+
+If the agent can read local Markdown files, run Python 3, and inspect the open
+project, use the shared prompt from step 3. If it cannot launch parallel
+subagents, add `sequential` to the end of your prompt. The audit will still
+produce the same evidence ledger and report; it will simply take longer.
+
 ## Optional: use a local copy while developing
 
 If you are changing this plugin yourself, you can run it from a local folder
