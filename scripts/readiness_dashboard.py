@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Read-only snapshot helpers for the local production-readiness dashboard."""
 
+import argparse
 import json
 import re
+import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -214,7 +216,7 @@ def startup_url(server: DashboardServer) -> str:
 
 def serve(project_root: Path, port: int = 0) -> None:
     server = create_server(project_root, port)
-    print(startup_url(server))
+    print(startup_url(server), flush=True)
     try:
         server.serve_forever()
     finally:
@@ -402,3 +404,16 @@ def build_snapshot(project_root: Path) -> dict:
     if invalid_state:
         return unavailable_snapshot(project_root, invalid_state)
     return snapshot_from_state(project_root, audit_root, state)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Serve a read-only production-readiness dashboard.")
+    parser.add_argument("project_root", type=Path, help="Target project root containing .readiness-audit")
+    parser.add_argument("--port", type=int, default=0, help="Port to bind on 127.0.0.1 (default: ephemeral)")
+    args = parser.parse_args(argv)
+    serve(args.project_root, args.port)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
