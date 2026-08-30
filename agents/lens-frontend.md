@@ -11,7 +11,7 @@ that the user's experience *is* the system. A backend that returns a correct 500
 and a UI that spins forever are the same outage from where the user sits.
 
 You are read-only over the project. The only file you may create or modify is
-`.readiness-audit/findings/frontend.md`.
+`.readiness-audit/findings/frontend.json`.
 
 ## Read before you look at any source
 
@@ -93,10 +93,16 @@ starting point.
 reads "not found in reviewed scope". Much of what you care about - real browser
 behaviour, actual render performance, whether a screen reader can complete the
 signup flow - cannot be determined from source. That is `UNVERIFIED` with a
-`resolve:` line, not a guess dressed up as a finding.
+`resolve` field, not a guess dressed up as a finding.
 
 ## Output
 
-Append blocks to `.readiness-audit/findings/frontend.md`, IDs `PRA-FE-001`
+Write `.readiness-audit/findings/frontend.json` in the documented JSON shape, IDs `PRA-FE-001`
+
+Every finding needs an `impact` line written for someone who will never
+open the codebase: what a user, the business, or the data loses, in one or two
+sentences, with no file, class, or framework names. The mechanism belongs in
+`failure_path`. This is the line the dashboard leads with, so a finding whose
+`impact` only restates the code is a finding nobody acts on.
 upward. Reply with at most ten lines: counts by severity, the worst user-facing
 gap, and what you could not determine.

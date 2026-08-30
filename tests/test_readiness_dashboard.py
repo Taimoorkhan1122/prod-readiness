@@ -8,19 +8,42 @@ from pathlib import Path
 from scripts.readiness_dashboard import DASHBOARD_HTML, build_snapshot, create_server, startup_url
 
 
+def write_findings(audit, lens, findings):
+    (audit / "findings").mkdir(parents=True, exist_ok=True)
+    (audit / "findings" / f"{lens}.json").write_text(
+        json.dumps({"schema": 1, "lens": lens, "findings": findings}))
+
+
+def finding(**overrides):
+    base = {
+        "id": "PRA-SEC-001",
+        "title": "Tenant id is read from the request body",
+        "impact": "Any logged-in customer can read another company's orders.",
+        "state": "CONFIRMED",
+        "severity": "P0",
+        "evidence": ["src/orders/orders.service.ts:88"],
+        "failure_path": "The controller trusts a client-supplied tenant id.",
+        "compensating": "none found",
+        "fix": "Derive the tenant from the session.",
+    }
+    base.update(overrides)
+    return base
+
+
 class DashboardClientContractTests(unittest.TestCase):
     def test_client_has_only_the_locked_navigation_destinations(self):
-        for route in ("overview", "findings", "evidence", "report"):
-            self.assertIn(f'data-route="{route}"', DASHBOARD_HTML)
-        self.assertNotIn("switcher", DASHBOARD_HTML)
-        self.assertNotIn("Back to dashboard", DASHBOARD_HTML)
+        self.assertIn("const ROUTES = ['overview', 'findings', 'evidence', 'report']", DASHBOARD_HTML)
+        self.assertIn(
+            "[['overview', 'Overview'], ['findings', 'Findings'], "
+            "['evidence', 'Evidence'], ['report', 'Report']]",
+            DASHBOARD_HTML)
 
     def test_client_polls_snapshot_every_two_seconds_while_running(self):
         self.assertIn("/api/snapshot", DASHBOARD_HTML)
         self.assertIn("setTimeout(refresh, 2000)", DASHBOARD_HTML)
         self.assertIn("snapshot.status === 'running'", DASHBOARD_HTML)
 
-    def test_client_escapes_artifact_content_and_has_no_remote_assets(self):
+    def test_client_escapes_content_and_has_no_remote_assets(self):
         self.assertIn("function escapeHtml", DASHBOARD_HTML)
         self.assertNotIn("https://", DASHBOARD_HTML)
         self.assertNotIn("http://", DASHBOARD_HTML)
@@ -31,208 +54,219 @@ class DashboardClientContractTests(unittest.TestCase):
 
         self.assertNotIn("setTimeout(refresh, 2000)", failure_handler)
 
-    def test_evidence_drawer_does_not_close_when_its_contents_are_clicked(self):
-        self.assertNotIn('class="drawer-backdrop" data-close-evidence', DASHBOARD_HTML)
-        self.assertIn('data-evidence-backdrop', DASHBOARD_HTML)
-        self.assertIn("event.target.matches('[data-evidence-backdrop]')", DASHBOARD_HTML)
+    def test_client_renders_no_markdown(self):
+        """The dashboard's job is to answer without making anyone read the trail."""
+        self.assertNotIn("renderMarkdown", DASHBOARD_HTML)
+        self.assertNotIn("reportHtml", DASHBOARD_HTML)
+
+    def test_finding_rows_lead_with_impact_not_evidence(self):
+        row = DASHBOARD_HTML.split("function findingRow(", 1)[1].split("function ", 1)[0]
+        self.assertIn("row-impact", row)
+        self.assertIn("finding.impact", row)
+        self.assertNotIn("finding.evidence", row)
+
+    def test_dialog_takes_and_returns_focus(self):
+        self.assertIn('role="dialog"', DASHBOARD_HTML)
+        self.assertIn("panel.focus()", DASHBOARD_HTML)
+        self.assertIn("returnFocusTo", DASHBOARD_HTML)
+
+    def test_control_state_words_differ_from_finding_state_words(self):
+        """'Confirmed' on a control means 'the repo has one', which is not what
+        it means on a finding. Different words keep the two from being read
+        as the same claim."""
+        self.assertIn("const CONTROL_LABEL = { CONFIRMED: 'Found'", DASHBOARD_HTML)
 
 
 class SnapshotTests(unittest.TestCase):
+    def _root(self):
+        root = Path(tempfile.mkdtemp())
+        (root / ".readiness-audit").mkdir()
+        return root
+
     def _write_state(self, audit, **overrides):
-        state = {
-            "stage": "3-lenses",
-            "stage_status": "in_progress",
-            "lenses_to_run": [],
-            "lenses_skipped": {},
-            "notes": [],
-        }
+        state = {"stage": "3-lenses", "stage_status": "in_progress",
+                 "lenses_to_run": [], "lenses_skipped": {}}
         state.update(overrides)
         (audit / "state.json").write_text(json.dumps(state))
 
     def test_missing_audit_returns_unavailable_snapshot(self):
-        root = Path(tempfile.mkdtemp())
-
-        snapshot = build_snapshot(root)
+        snapshot = build_snapshot(Path(tempfile.mkdtemp()))
 
         self.assertEqual(snapshot["status"], "unavailable")
-        self.assertEqual(snapshot["stage"], {"name": None, "status": None, "note": None})
-        self.assertIn("No .readiness-audit directory", snapshot["message"])
+        self.assertEqual(snapshot["findings"], [])
+        self.assertEqual(snapshot["counts"]["total"], 0)
+        self.assertEqual(len(snapshot["lenses"]), 7)
 
-    def test_running_audit_includes_stage_mode_and_lens_progress(self):
-        root = Path(tempfile.mkdtemp())
+    def test_running_audit_reports_stage_mode_and_lens_progress(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        (audit / "findings").mkdir(parents=True)
-        (audit / "state.json").write_text(json.dumps({
-            "stage": "3-lenses",
-            "stage_status": "in_progress",
-            "execution_mode": "parallel",
-            "notes": [{"stage": "3-lenses", "note": "Wave one complete"}],
-            "lenses_to_run": ["security", "backend"],
-            "lenses_skipped": {"ai-security": "No model calls"},
-            "updated_at": "2026-08-30T10:00:00+00:00",
-        }))
-        (audit / "findings" / "security.md").write_text("# Security\n\n## P0\n")
+        (audit / "findings").mkdir()
+        self._write_state(audit, execution_mode="parallel",
+                          lenses_to_run=["security", "backend"],
+                          lenses_skipped={"ai-security": "no AI surface"})
+        write_findings(audit, "security", [finding()])
 
         snapshot = build_snapshot(root)
+        by_id = {lens["id"]: lens for lens in snapshot["lenses"]}
 
         self.assertEqual(snapshot["status"], "running")
-        self.assertEqual(snapshot["stage"], {"name": "3-lenses", "status": "in_progress", "note": "Wave one complete"})
         self.assertEqual(snapshot["executionMode"], "parallel")
-        self.assertEqual(snapshot["lenses"][0]["status"], "complete")
-        self.assertEqual(snapshot["lenses"][-1], {
-            "id": "ai-security", "label": "AI security", "status": "skipped",
-            "findingPath": "findings/ai-security.md",
-        })
+        self.assertEqual(by_id["security"]["status"], "complete")
+        self.assertEqual(by_id["backend"]["status"], "running")
+        self.assertEqual(by_id["ai-security"]["status"], "skipped")
+        self.assertEqual(by_id["ai-security"]["skippedReason"], "no AI surface")
+        self.assertEqual(by_id["frontend"]["status"], "waiting")
 
-    def test_complete_audit_uses_report_and_counts_severity_labels(self):
-        root = Path(tempfile.mkdtemp())
+    def test_counts_come_from_the_findings_themselves(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        (audit / "findings").mkdir(parents=True)
-        (audit / "state.json").write_text(json.dumps({
-            "stage": "5-report", "stage_status": "complete", "lenses_to_run": ["security"],
-            "lenses_skipped": {}, "notes": []
-        }))
-        (audit / "findings" / "security.md").write_text("## P0\n## P1\nUNVERIFIED\n")
-        (audit / "report.md").write_text("# Report\n\n## Verdict\nHOLD - DO NOT DEPLOY\n")
+        self._write_state(audit, stage_status="complete")
+        write_findings(audit, "security", [
+            finding(id="PRA-SEC-001", severity="P0", state="CONFIRMED"),
+            finding(id="PRA-SEC-002", severity="P1", state="UNVERIFIED", resolve="Check the console."),
+        ])
+        write_findings(audit, "qa", [finding(id="PRA-QA-001", severity="P2", state="NOT_FOUND", probe="tests")])
 
         snapshot = build_snapshot(root)
 
         self.assertEqual(snapshot["status"], "complete")
-        self.assertEqual(snapshot["summary"], {"p0": 1, "p1": 1, "p2": 0, "unverified": 1, "verdict": "HOLD - DO NOT DEPLOY"})
-        self.assertEqual(snapshot["artifacts"]["report"], {"available": True, "content": "# Report\n\n## Verdict\nHOLD - DO NOT DEPLOY\n"})
+        self.assertEqual(snapshot["counts"],
+                         {"total": 3, "p0": 1, "p1": 1, "p2": 1, "p3": 0,
+                          "confirmed": 1, "notFound": 1, "unverified": 1})
 
-    def test_malformed_state_is_unavailable_instead_of_raising(self):
-        root = Path(tempfile.mkdtemp())
+    def test_findings_are_ordered_worst_first(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        audit.mkdir()
-        (audit / "state.json").write_text("{")
+        self._write_state(audit)
+        write_findings(audit, "security", [
+            finding(id="PRA-SEC-009", severity="P2"),
+            finding(id="PRA-SEC-002", severity="P0"),
+            finding(id="PRA-SEC-005", severity="P1"),
+        ])
 
-        snapshot = build_snapshot(root)
+        ids = [f["id"] for f in build_snapshot(root)["findings"]]
 
-        self.assertEqual(snapshot["status"], "unavailable")
-        self.assertIn("not readable", snapshot["message"])
+        self.assertEqual(ids, ["PRA-SEC-002", "PRA-SEC-005", "PRA-SEC-009"])
 
-    def test_missing_report_keeps_running_audit_partial(self):
-        root = Path(tempfile.mkdtemp())
+    def test_verdict_is_read_from_data_not_from_prose(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        audit.mkdir()
-        (audit / "state.json").write_text(json.dumps({
-            "stage": "4-validation", "stage_status": "in_progress", "lenses_to_run": [],
-            "lenses_skipped": {}, "notes": []
+        self._write_state(audit, stage_status="complete")
+        (audit / "report.md").write_text("## Executive Verdict\n\n**SHIP**\n")
+        (audit / "verdict.json").write_text(json.dumps({
+            "decision": "HOLD",
+            "headline": "Two blockers make this unsafe to deploy.",
         }))
 
-        snapshot = build_snapshot(root)
+        verdict = build_snapshot(root)["verdict"]
 
-        self.assertEqual(snapshot["status"], "running")
-        self.assertEqual(snapshot["artifacts"]["report"], {"available": False, "content": None})
+        self.assertEqual(verdict["decision"], "HOLD")
+        self.assertEqual(verdict["headline"], "Two blockers make this unsafe to deploy.")
 
-    def test_unrecognized_stage_status_is_unavailable(self):
-        root = Path(tempfile.mkdtemp())
+    def test_unknown_verdict_decision_is_reported_not_guessed(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        audit.mkdir()
-        self._write_state(audit, stage_status="paused")
+        self._write_state(audit)
+        (audit / "verdict.json").write_text(json.dumps({"decision": "PROBABLY FINE"}))
 
         snapshot = build_snapshot(root)
 
-        self.assertEqual(snapshot["status"], "unavailable")
-        self.assertIn("stage status", snapshot["message"])
+        self.assertIsNone(snapshot["verdict"]["decision"])
+        self.assertTrue(any("decision must be one of" in e for e in snapshot["errors"]))
 
-    def test_malformed_lens_configuration_is_unavailable(self):
-        root = Path(tempfile.mkdtemp())
+    def test_malformed_findings_file_is_reported_without_losing_other_lenses(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        audit.mkdir()
-        self._write_state(audit, lenses_to_run="security")
+        self._write_state(audit)
+        write_findings(audit, "security", [finding()])
+        (audit / "findings" / "qa.json").write_text("{ not json")
 
         snapshot = build_snapshot(root)
 
-        self.assertEqual(snapshot["status"], "unavailable")
-        self.assertIn("lens configuration", snapshot["message"])
+        self.assertEqual(snapshot["counts"]["total"], 1)
+        self.assertTrue(any("qa" in e and "not valid JSON" in e for e in snapshot["errors"]))
 
-    def test_missing_lens_configuration_keys_are_unavailable(self):
-        root = Path(tempfile.mkdtemp())
+    def test_finding_missing_a_required_field_is_rejected_with_its_id(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        audit.mkdir()
-        (audit / "state.json").write_text(json.dumps({
-            "stage": "3-lenses", "stage_status": "in_progress", "notes": []
-        }))
+        self._write_state(audit)
+        broken = finding()
+        del broken["fix"]
+        write_findings(audit, "security", [broken])
 
         snapshot = build_snapshot(root)
 
-        self.assertEqual(snapshot["status"], "unavailable")
-        self.assertIn("lens configuration", snapshot["message"])
+        self.assertEqual(snapshot["counts"]["total"], 0)
+        self.assertTrue(any("PRA-SEC-001" in e and "fix is required" in e for e in snapshot["errors"]))
 
-    def test_unreadable_finding_is_retained_as_unavailable(self):
-        root = Path(tempfile.mkdtemp())
+    def test_malformed_state_degrades_instead_of_raising(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        (audit / "findings").mkdir(parents=True)
-        self._write_state(audit, lenses_to_run=["security"])
-        (audit / "findings" / "security.md").write_bytes(b"\xff")
+        (audit / "state.json").write_text("{ not json")
+        write_findings(audit, "security", [finding()])
 
         snapshot = build_snapshot(root)
 
-        self.assertEqual(snapshot["status"], "running")
-        self.assertEqual(snapshot["lenses"][0]["status"], "unavailable")
-        self.assertEqual(snapshot["artifacts"]["findings"], [{
-            "path": "findings/security.md", "available": False, "content": None,
-        }])
-        self.assertIn("unavailable", snapshot["message"])
+        self.assertEqual(snapshot["counts"]["total"], 1)
+        self.assertTrue(any("state.json" in e for e in snapshot["errors"]))
 
-    def test_unreadable_finding_overrides_skipped_lens_status(self):
-        root = Path(tempfile.mkdtemp())
+    def test_evidence_rows_carry_the_paths_that_justify_them(self):
+        root = self._root()
         audit = root / ".readiness-audit"
-        (audit / "findings").mkdir(parents=True)
-        self._write_state(audit, lenses_to_run=[], lenses_skipped={"security": "Not in scope"})
-        (audit / "findings" / "security.md").write_bytes(b"\xff")
+        self._write_state(audit)
+        (audit / "evidence").mkdir()
+        (audit / "evidence" / "absence-ledger.json").write_text(json.dumps({"controls": {
+            "rate_limiting": {"polarity": "control", "label": "Rate limiting",
+                              "lens": "security", "hit_count": 0, "supports_state": "NOT_FOUND"},
+            "backup_config": {"polarity": "control", "label": "Backups", "lens": "database",
+                              "hit_count": 2, "supports_state": "NOT_FOUND",
+                              "hits": [{"path": "infra/backup.tf"}, {"path": "README.md"}]},
+            "a_branch_selector": {"polarity": "branch", "label": "ignored", "hit_count": 5},
+        }}))
 
-        snapshot = build_snapshot(root)
+        rows = {row["id"]: row for row in build_snapshot(root)["evidence"]}
 
-        self.assertEqual(snapshot["lenses"][0]["status"], "unavailable")
+        self.assertNotIn("a_branch_selector", rows)
+        self.assertEqual(rows["rate_limiting"]["state"], "NOT_FOUND")
+        self.assertEqual(rows["backup_config"]["state"], "CONFIRMED")
+        self.assertEqual(rows["backup_config"]["paths"], ["infra/backup.tf", "README.md"])
 
 
-class DashboardHttpTests(unittest.TestCase):
-    def setUp(self):
-        self.root = Path(tempfile.mkdtemp())
-        self.server = create_server(self.root, port=0)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
+class ServerTests(unittest.TestCase):
+    def _serve(self, root):
+        server = create_server(root)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server
 
-    def tearDown(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=2)
-
-    def request(self, path):
-        host, port = self.server.server_address
-        connection = http.client.HTTPConnection(host, port, timeout=2)
+    def _get(self, server, path):
+        host, port = server.server_address
+        connection = http.client.HTTPConnection(host, port, timeout=5)
         connection.request("GET", path)
         response = connection.getresponse()
-        body = response.read().decode()
+        body = response.read()
         connection.close()
-        return response, body
+        return response.status, body
 
-    def test_server_binds_to_loopback_and_serves_snapshot(self):
-        self.assertEqual(self.server.server_address[0], "127.0.0.1")
-        response, body = self.request("/api/snapshot")
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response.getheader("Content-Type"), "application/json; charset=utf-8")
+    def test_deep_links_with_a_query_string_still_serve_the_app(self):
+        server = self._serve(Path(tempfile.mkdtemp()))
+
+        self.assertEqual(self._get(server, "/")[0], 200)
+        self.assertEqual(self._get(server, "/?view=findings&finding=PRA-SEC-001")[0], 200)
+
+        status, body = self._get(server, "/api/snapshot")
+        self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["status"], "unavailable")
 
-    def test_server_serves_dashboard_and_unknown_paths_are_404(self):
-        root_response, root_body = self.request("/")
-        missing_response, _ = self.request("/unexpected")
-        self.assertEqual(root_response.status, 200)
-        self.assertIn('id="app"', root_body)
-        self.assertEqual(missing_response.status, 404)
+        self.assertEqual(self._get(server, "/nope")[0], 404)
 
-
-class DashboardStartupTests(unittest.TestCase):
-    def test_startup_url_uses_the_actual_ephemeral_port(self):
-        server = create_server(Path(tempfile.mkdtemp()), port=0)
-        host, port = server.server_address
+    def test_server_binds_loopback_only(self):
+        server = create_server(Path(tempfile.mkdtemp()))
         try:
-            self.assertEqual(host, "127.0.0.1")
-            self.assertGreater(port, 0)
-            self.assertEqual(startup_url(server), f"http://127.0.0.1:{port}/")
+            self.assertTrue(startup_url(server).startswith("http://127.0.0.1:"))
         finally:
             server.server_close()
 

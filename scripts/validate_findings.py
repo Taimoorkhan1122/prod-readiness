@@ -42,30 +42,55 @@ OVERCLAIM = re.compile(
 
 EVIDENCE_LOC = re.compile(r"[\w./\\-]+\.[A-Za-z0-9]+:\d+")
 
+# A file path, a dotted symbol, or anything in backticks - the shapes that mean
+# an `impact` line was written for an engineer rather than for the reader.
+CODE_SHAPED = re.compile(r"`[^`]+`|[\w-]+/[\w./-]+|\b\w+\.(?:ts|tsx|js|jsx|py|go|rb|java|sql|json|yml|yaml|toml)\b")
+
+
+# The authored JSON uses snake_case; the rules below were written against the
+# markdown field names. Mapping once here keeps every rule untouched.
+JSON_TO_FIELD = {
+    "state": "state", "severity": "severity", "owner": "owner",
+    "cross_lens": "cross-lens", "evidence": "evidence", "probe": "probe",
+    "impact": "impact", "failure_path": "failure-path",
+    "compensating": "compensating", "fix": "fix", "resolve": "resolve", "see": "see",
+}
+
 
 def parse_file(path: Path):
-    """Findings are markdown so a human can read the trail; the shape is strict
-    enough that a regex parser is reliable."""
-    findings, current, lineno_of = [], None, {}
-    for i, raw in enumerate(path.read_text(errors="replace").splitlines(), 1):
-        line = raw.rstrip()
-        m = HEADING.match(line)
-        if m:
-            if current:
-                findings.append(current)
-            current = {"id": m.group(1), "title": m.group(2), "_line": i,
-                       "_file": path.name, "fields": {}}
-            lineno_of[m.group(1)] = i
-            continue
-        if current is None:
-            continue
-        if not line.strip():
-            continue
-        fm = FIELD.match(line)
-        if fm:
-            current["fields"][fm.group(1)] = fm.group(2).strip()
-    if current:
-        findings.append(current)
+    """Load one findings/<lens>.json into the shape the rules below expect.
+
+    Lenses author JSON, so there is nothing to parse out of prose - a malformed
+    file is a hard error rather than a finding silently read as empty.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path.name} is not valid JSON "
+                         f"(line {exc.lineno}, column {exc.colno})") from exc
+
+    if isinstance(raw, list):
+        raw = {"findings": raw}
+    if not isinstance(raw, dict) or not isinstance(raw.get("findings", []), list):
+        raise ValueError(f"{path.name} must be an object with a 'findings' list")
+
+    findings = []
+    for index, item in enumerate(raw.get("findings", []), 1):
+        if not isinstance(item, dict):
+            raise ValueError(f"{path.name}: finding #{index} is not an object")
+        fields = {}
+        for json_key, field_key in JSON_TO_FIELD.items():
+            value = item.get(json_key)
+            if isinstance(value, list):
+                value = ", ".join(str(v).strip() for v in value if str(v).strip())
+            fields[field_key] = "" if value is None else str(value).strip()
+        findings.append({
+            "id": str(item.get("id") or f"<finding #{index}>"),
+            "title": str(item.get("title") or ""),
+            "_line": index,
+            "_file": path.name,
+            "fields": fields,
+        })
     return findings
 
 
@@ -95,9 +120,14 @@ def validate(root: Path):
 
     all_findings = []
     seen_ids = {}
-    for f in sorted(fdir.glob("*.md")):
+    for f in sorted(fdir.glob("*.json")):
         lens = f.stem
-        for fd in parse_file(f):
+        try:
+            parsed = parse_file(f)
+        except ValueError as exc:
+            errors.append((f.name, "-", str(exc)))
+            continue
+        for fd in parsed:
             fd["lens_file"] = lens
             all_findings.append(fd)
 
@@ -131,6 +161,21 @@ def validate(root: Path):
             err("no fix given; a finding without a concrete remediation is an observation, not a finding")
         if empty(F.get("owner")):
             err("no owner lens declared")
+        if not fd["title"].strip():
+            err("no title; the dashboard has nothing to name this finding")
+
+        # `impact` is the only field a non-engineer reads. A finding without one
+        # reaches the dashboard as a headline nobody can act on.
+        impact = F.get("impact", "")
+        if empty(impact):
+            err("no impact given; state in one or two sentences what a user, the "
+                "business, or the data loses - the mechanism belongs in failure-path")
+        elif impact.strip() == F.get("failure-path", "").strip():
+            err("impact repeats failure-path verbatim; impact is the plain-language "
+                "cost, failure-path is the mechanism")
+        elif CODE_SHAPED.search(impact):
+            warn("impact names a file, path, or code symbol; rewrite it for someone "
+                 "who will never open the codebase")
 
         if state == "CONFIRMED":
             ev = F.get("evidence", "")
