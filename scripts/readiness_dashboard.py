@@ -37,20 +37,50 @@ DASHBOARD_HTML = """<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Production Readiness</title>
     <style>
-      :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; background: #0b1220; color: #e5edf9; }
-      * { box-sizing: border-box; } body { margin: 0; } button { font: inherit; }
-      .shell { max-width: 1180px; margin: auto; padding: 24px; } .topbar { display: flex; justify-content: space-between; gap: 20px; align-items: start; border-bottom: 1px solid #23324a; padding-bottom: 18px; }
-      h1, h2, h3, p { margin-top: 0; } h1 { font-size: 1.6rem; margin-bottom: 5px; } h2 { font-size: 1.1rem; } .muted { color: #a9b8cc; }
-      .nav { display: flex; flex-wrap: wrap; gap: 8px; } .nav button, .button { cursor: pointer; border: 1px solid #465b7d; border-radius: 7px; background: #17243a; color: inherit; padding: 8px 12px; }
-      .nav button[aria-current="page"] { background: #2559a7; border-color: #6fa4ff; } .summary { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: 12px; margin: 22px 0; }
-      .metric, .panel, .lens { border: 1px solid #253751; border-radius: 9px; background: #101b2c; padding: 15px; } .metric strong { display: block; font-size: 1.4rem; }
-      .timeline { display: grid; gap: 10px; } .timeline-item { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 13px; border-left: 3px solid #41658f; background: #101b2c; }
-      .lens-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-top: 14px; } .lens { text-align: left; cursor: pointer; color: inherit; }
-      .lens .status { display: block; margin-top: 8px; } .status { color: #9fb5d8; font-size: .88rem; text-transform: capitalize; } .status.complete { color: #62d89b; } .status.running { color: #ffd36d; } .status.unavailable { color: #ff9c9c; }
-      .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: .85rem/1.5 ui-monospace, monospace; color: #d3e1f5; }
-      details { border-top: 1px solid #253751; padding: 12px 0; } details:first-of-type { border-top: 0; } summary { cursor: pointer; color: #c9dcf9; } .empty { padding: 22px; text-align: center; }
-      .drawer-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .48); } .drawer { position: fixed; inset: 0 0 0 auto; width: min(560px, 94vw); background: #0d1728; border-left: 1px solid #415977; box-shadow: -12px 0 32px rgba(0, 0, 0, .35); padding: 24px; overflow: auto; }
-      .drawer-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; } .drawer-header button { background: transparent; color: inherit; border: 0; font-size: 1.4rem; cursor: pointer; }
+      :root { color-scheme: light; --ink:#18222c; --muted:#62707c; --paper:#f7f7f5; --line:#dbe0df; --green:#087f5b; --amber:#b56800; --red:#c23934; --blue:#2d63c8; --navy:#11263d; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      button { font: inherit; cursor: pointer; }
+      h1, h2, h3, p { margin-top: 0; } h1 { font-size: 1.7rem; letter-spacing: -.03em; margin-bottom: 6px; } h2 { font-size: 1.15rem; letter-spacing: -.015em; }
+      .muted { color: var(--muted); }
+      .shell { max-width: 1180px; margin: auto; padding: 28px 24px 96px; }
+      .topbar { display: flex; justify-content: space-between; gap: 20px; align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 18px; }
+      .nav { display: flex; flex-wrap: wrap; gap: 4px; }
+      .nav button, .button { border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-weight: 750; font-size: .85rem; padding: 8px 12px; }
+      .nav button:hover { background: #edf0ef; color: var(--ink); }
+      .nav button[aria-current="page"] { background: var(--navy); color: white; }
+      .summary { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: 12px; margin: 22px 0; }
+      .metric, .panel, .lens { border: 1px solid var(--line); border-radius: 12px; background: white; padding: 16px; }
+      .metric strong { display: block; font-size: 1.6rem; letter-spacing: -.03em; }
+      .timeline { display: grid; gap: 10px; }
+      .timeline-item { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 13px; border-left: 3px solid var(--blue); background: #f1f6ff; border-radius: 0 8px 8px 0; }
+      .lens-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-top: 14px; }
+      .lens { text-align: left; color: inherit; transition: transform 140ms ease, box-shadow 140ms ease; }
+      .lens:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0,0,0,.08); border-color: #5c8ce2; }
+      .lens .status { display: block; margin-top: 8px; }
+      .status { color: var(--muted); font-size: .85rem; font-weight: 700; text-transform: capitalize; }
+      .status.complete { color: var(--green); } .status.running { color: var(--amber); } .status.unavailable { color: var(--red); }
+      .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .empty { padding: 22px; text-align: center; color: var(--muted); }
+      details { border-top: 1px solid var(--line); padding: 12px 0; }
+      details:first-of-type { border-top: 0; }
+      summary { cursor: pointer; color: var(--ink); font-weight: 700; }
+      summary .path { color: var(--muted); font-weight: 500; margin-left: 6px; }
+      .md { margin-top: 12px; overflow-wrap: anywhere; }
+      .md h1, .md h2, .md h3 { margin: 18px 0 8px; } .md h1:first-child, .md h2:first-child, .md h3:first-child { margin-top: 0; }
+      .md p { margin: 10px 0; } .md ul, .md ol { padding-left: 22px; margin: 10px 0; }
+      .md code { background: #edf0ef; border-radius: 4px; padding: 1px 5px; font: .88em ui-monospace, monospace; }
+      .md pre { background: var(--navy); color: #e5edf9; border-radius: 8px; padding: 12px; overflow: auto; }
+      .md pre code { background: none; padding: 0; color: inherit; }
+      .md table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: .92rem; }
+      .md th, .md td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+      .md th { background: #f1f3f2; }
+      .md blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--muted); }
+      .md a { color: var(--blue); }
+      .drawer-backdrop { position: fixed; inset: 0; background: rgba(17,38,61,.35); }
+      .drawer { position: fixed; inset: 0 0 0 auto; width: min(560px, 94vw); background: white; border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0,0,0,.18); padding: 24px; overflow: auto; }
+      .drawer-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+      .drawer-header button { background: #edf0ef; color: var(--ink); border: 0; border-radius: 9px; width: 32px; height: 32px; font-size: 1.1rem; }
       @media (max-width: 720px) { .shell { padding: 16px; } .topbar, .columns { display: block; } .nav { margin-top: 16px; } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .columns > * { margin-bottom: 16px; } .timeline-item { grid-template-columns: 1fr; gap: 5px; } }
     </style>
   </head>
@@ -60,11 +90,92 @@ DASHBOARD_HTML = """<!doctype html>
       const app = document.getElementById('app');
       let currentSnapshot = null;
       let activeLens = null;
+      const openFindings = new Set();
 
       function escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, character => ({
           '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
         })[character]);
+      }
+
+      function renderInline(text) {
+        let value = escapeHtml(text);
+        value = value.replace(/`([^`]+)`/g, '<code>$1</code>');
+        value = value.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+        value = value.replace(/(?<!\\*)\\*([^*]+)\\*(?!\\*)/g, '<em>$1</em>');
+        value = value.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+        return value;
+      }
+
+      function renderMarkdown(text) {
+        if (!text) return '';
+        const lines = String(text).replace(/\\r\\n/g, '\\n').split('\\n');
+        const html = [];
+        let paragraph = [];
+        let list = null;
+        let inCode = false;
+        let codeLines = [];
+        let table = null;
+
+        function flushParagraph() {
+          if (paragraph.length) { html.push(`<p>${renderInline(paragraph.join(' '))}</p>`); paragraph = []; }
+        }
+        function flushList() {
+          if (list) { html.push(`<${list.tag}>${list.items.join('')}</${list.tag}>`); list = null; }
+        }
+        function flushTable() {
+          if (table) {
+            const head = `<tr>${table.header.map(cell => `<th>${renderInline(cell)}</th>`).join('')}</tr>`;
+            const body = table.rows.map(row => `<tr>${row.map(cell => `<td>${renderInline(cell)}</td>`).join('')}</tr>`).join('');
+            html.push(`<table>${head}${body}</table>`);
+            table = null;
+          }
+        }
+
+        for (const rawLine of lines) {
+          const line = rawLine;
+          if (line.trim().startsWith('```')) {
+            if (inCode) { html.push(`<pre><code>${escapeHtml(codeLines.join('\\n'))}</code></pre>`); codeLines = []; inCode = false; }
+            else { flushParagraph(); flushList(); flushTable(); inCode = true; }
+            continue;
+          }
+          if (inCode) { codeLines.push(line); continue; }
+
+          const heading = line.match(/^(#{1,6})\\s+(.*)$/);
+          if (heading) {
+            flushParagraph(); flushList(); flushTable();
+            const level = Math.min(heading[1].length, 3);
+            html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+            continue;
+          }
+
+          const tableRow = line.match(/^\\s*\\|(.+)\\|\\s*$/);
+          if (tableRow) {
+            const cells = tableRow[1].split('|').map(cell => cell.trim());
+            if (cells.every(cell => /^:?-{2,}:?$/.test(cell))) continue;
+            flushParagraph(); flushList();
+            if (!table) { table = { header: cells, rows: [] }; }
+            else { table.rows.push(cells); }
+            continue;
+          }
+          flushTable();
+
+          const listItem = line.match(/^\\s*([-*]|\\d+\\.)\\s+(.*)$/);
+          if (listItem) {
+            flushParagraph();
+            const tag = /\\d+\\./.test(listItem[1]) ? 'ol' : 'ul';
+            if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+            list.items.push(`<li>${renderInline(listItem[2])}</li>`);
+            continue;
+          }
+          flushList();
+
+          if (!line.trim()) { flushParagraph(); continue; }
+          paragraph.push(line.trim());
+        }
+        flushParagraph(); flushList(); flushTable();
+        if (inCode) html.push(`<pre><code>${escapeHtml(codeLines.join('\\n'))}</code></pre>`);
+        return `<div class="md">${html.join('')}</div>`;
       }
 
       function routeFromHash() {
@@ -94,7 +205,7 @@ DASHBOARD_HTML = """<!doctype html>
         if (!lens) return '';
         const finding = findingFor(snapshot, lens.findingPath);
         const content = finding && finding.available ? finding.content : 'No readable finding artifact is available for this lens.';
-        return `<section class="panel" id="lens-detail"><div class="drawer-header"><div><h2>${escapeHtml(lens.label)} lens</h2><p class="status ${statusClass(lens.status)}">${escapeHtml(lens.status)}</p></div><button type="button" data-close-lens aria-label="Close lens detail">×</button></div><pre>${escapeHtml(content)}</pre></section>`;
+        return `<section class="panel" id="lens-detail"><div class="drawer-header"><div><h2>${escapeHtml(lens.label)} lens</h2><p class="status ${statusClass(lens.status)}">${escapeHtml(lens.status)}</p></div><button type="button" data-close-lens aria-label="Close lens detail">×</button></div>${renderMarkdown(content)}</section>`;
       }
 
       function overview(snapshot) {
@@ -117,7 +228,8 @@ DASHBOARD_HTML = """<!doctype html>
         const list = findings.length ? findings.map(finding => {
           const text = finding.available ? finding.content : 'Artifact is unavailable.';
           const summary = String(text || '').split('\\n').find(line => line.trim()) || finding.path;
-          return `<details><summary>${escapeHtml(finding.path)} — ${escapeHtml(summary)}</summary><pre>${escapeHtml(text)}</pre></details>`;
+          const isOpen = openFindings.has(finding.path);
+          return `<details data-finding="${escapeHtml(finding.path)}" ${isOpen ? 'open' : ''}><summary>${escapeHtml(finding.path)}<span class="path"> — ${escapeHtml(summary)}</span></summary>${renderMarkdown(text)}</details>`;
         }).join('') : '<p class="empty">No finding artifacts are available yet.</p>';
         return `<section class="panel"><h2>Findings</h2><p class="muted">Raw finding summaries from the current audit snapshot.</p>${list}</section>`;
       }
@@ -125,14 +237,14 @@ DASHBOARD_HTML = """<!doctype html>
       function report(snapshot) {
         const report = snapshot.artifacts.report || {};
         const text = report.available ? report.content : 'The report artifact is not available yet.';
-        return `<section class="panel"><h2>Report</h2><pre>${escapeHtml(text)}</pre></section>`;
+        return `<section class="panel"><h2>Report</h2>${renderMarkdown(text)}</section>`;
       }
 
       function evidenceDrawer(snapshot, visible) {
         if (!visible) return '';
         const artifact = snapshot.artifacts.evidenceLedger || {};
         const text = artifact.available ? artifact.content : 'The evidence ledger is not available yet.';
-        return `<div class="drawer-backdrop" data-evidence-backdrop><aside class="drawer" role="dialog" aria-modal="true" aria-label="Evidence ledger"><div class="drawer-header"><div><h2>Evidence</h2><p class="muted">Read-only absence ledger</p></div><button type="button" data-close-evidence aria-label="Close evidence">×</button></div><pre>${escapeHtml(text)}</pre></aside></div>`;
+        return `<div class="drawer-backdrop" data-evidence-backdrop><aside class="drawer" role="dialog" aria-modal="true" aria-label="Evidence ledger"><div class="drawer-header"><div><h2>Evidence</h2><p class="muted">Read-only absence ledger</p></div><button type="button" data-close-evidence aria-label="Close evidence">×</button></div>${renderMarkdown(text)}</aside></div>`;
       }
 
       function render(snapshot) {
@@ -146,6 +258,13 @@ DASHBOARD_HTML = """<!doctype html>
           <button type="button" data-route="report" ${route === 'report' ? 'aria-current="page"' : ''}>Report</button>
         </nav></header>${content}</div>${evidenceDrawer(snapshot, route === 'evidence')}`;
       }
+
+      app.addEventListener('toggle', event => {
+        const details = event.target.closest('[data-finding]');
+        if (!details) return;
+        if (details.open) openFindings.add(details.dataset.finding);
+        else openFindings.delete(details.dataset.finding);
+      }, true);
 
       app.addEventListener('click', event => {
         const routeButton = event.target.closest('[data-route]');
