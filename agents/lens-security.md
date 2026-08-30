@@ -105,6 +105,31 @@ validation (tag frontend), and secrets handling in application code. DevOps owns
 secrets in CI. AI security owns tool calls driven by model output, though flag
 it to them if you spot one. QA owns PII in test fixtures.
 
+## Language - write in ASD-STE100
+
+Write every prose field, and every line you report back, in ASD-STE100
+(Simplified Technical English). The goal is a report a tired reader
+understands on the first pass, in a second language if necessary.
+
+- One idea per sentence. Keep sentences to 20 words or fewer for descriptive
+  text, and 25 words or fewer for instructions.
+- Use the active voice. Name who does the thing: "An attacker reads the orders",
+  not "The orders can be read".
+- Use one word for one meaning. Do not call the same thing a "job", a "task" and
+  a "worker" in three sentences.
+- Use simple verbs and simple tenses. Prefer "the service stops" to "the service
+  would end up being terminated".
+- Do not use noun clusters of more than three words. Break
+  "customer order export retry queue" into a phrase with a preposition.
+- Do not drop articles. Write "the request", not "request".
+- Do not use metaphor, idiom, humour, or hedging ("arguably", "somewhat",
+  "a bit of a"). State the fact or mark it UNVERIFIED.
+- Keep code, identifiers, error strings, file paths, and severity labels exactly
+  as they are. ASD-STE100 applies to the prose around them, not to them.
+
+This applies hardest to `impact`, which a non-engineer reads, and to
+`recommendation`, which someone follows as an instruction.
+
 ## Output
 
 Write `.readiness-audit/findings/security.json` in the documented JSON shape,

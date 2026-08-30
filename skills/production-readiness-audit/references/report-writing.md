@@ -6,6 +6,22 @@ register, and the evidence-to-obtain list. It leaves `<!-- FILL: ... -->`
 markers where judgement is required. Replace every one of them. A report shipped
 with FILL markers still in it tells the reader the audit was abandoned halfway.
 
+## Language - write in ASD-STE100
+
+Write every section you fill in ASD-STE100 (Simplified Technical English). The
+reader may be tired, non-technical, or reading in a second language, and the
+verdict must survive all three.
+
+- One idea per sentence. 20 words or fewer for descriptive text, 25 or fewer for
+  instructions.
+- Active voice, with the actor named.
+- One word for one meaning across the whole report.
+- Simple verbs and simple tenses.
+- No noun cluster longer than three words. Keep the articles.
+- No metaphor, no idiom, no humour, no hedging. State the fact, or mark it
+  UNVERIFIED.
+- Code, identifiers, paths, error strings, and severity labels stay verbatim.
+
 ## Section B - the verdict
 
 Three sentences of context, then the call. A CTO reads this and nothing else
