@@ -7,6 +7,17 @@ from scripts.readiness_dashboard import build_snapshot
 
 
 class SnapshotTests(unittest.TestCase):
+    def _write_state(self, audit, **overrides):
+        state = {
+            "stage": "3-lenses",
+            "stage_status": "in_progress",
+            "lenses_to_run": [],
+            "lenses_skipped": {},
+            "notes": [],
+        }
+        state.update(overrides)
+        (audit / "state.json").write_text(json.dumps(state))
+
     def test_missing_audit_returns_unavailable_snapshot(self):
         root = Path(tempfile.mkdtemp())
 
@@ -83,6 +94,44 @@ class SnapshotTests(unittest.TestCase):
 
         self.assertEqual(snapshot["status"], "running")
         self.assertEqual(snapshot["artifacts"]["report"], {"available": False, "content": None})
+
+    def test_unrecognized_stage_status_is_unavailable(self):
+        root = Path(tempfile.mkdtemp())
+        audit = root / ".readiness-audit"
+        audit.mkdir()
+        self._write_state(audit, stage_status="paused")
+
+        snapshot = build_snapshot(root)
+
+        self.assertEqual(snapshot["status"], "unavailable")
+        self.assertIn("stage status", snapshot["message"])
+
+    def test_malformed_lens_configuration_is_unavailable(self):
+        root = Path(tempfile.mkdtemp())
+        audit = root / ".readiness-audit"
+        audit.mkdir()
+        self._write_state(audit, lenses_to_run="security")
+
+        snapshot = build_snapshot(root)
+
+        self.assertEqual(snapshot["status"], "unavailable")
+        self.assertIn("lens configuration", snapshot["message"])
+
+    def test_unreadable_finding_is_retained_as_unavailable(self):
+        root = Path(tempfile.mkdtemp())
+        audit = root / ".readiness-audit"
+        (audit / "findings").mkdir(parents=True)
+        self._write_state(audit, lenses_to_run=["security"])
+        (audit / "findings" / "security.md").write_bytes(b"\xff")
+
+        snapshot = build_snapshot(root)
+
+        self.assertEqual(snapshot["status"], "running")
+        self.assertEqual(snapshot["lenses"][0]["status"], "unavailable")
+        self.assertEqual(snapshot["artifacts"]["findings"], [{
+            "path": "findings/security.md", "available": False, "content": None,
+        }])
+        self.assertIn("unavailable", snapshot["message"])
 
 
 if __name__ == "__main__":

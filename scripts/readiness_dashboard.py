@@ -88,10 +88,24 @@ def _finding_files(audit_root: Path):
         return []
 
 
-def _lens_status(lens: str, state: dict, finding_text: dict[str, str]) -> str:
+def _validate_state(state: dict) -> str | None:
+    if state.get("stage_status") not in {"in_progress", "complete"}:
+        return "Audit state has an unavailable stage status; wait for the audit to write a recognized stage status."
+    selected = state.get("lenses_to_run", [])
+    skipped = state.get("lenses_skipped", {})
+    if not isinstance(selected, list) or any(lens not in LENS_ORDER for lens in selected):
+        return "Audit state has an invalid lens configuration; lenses_to_run must contain known lens IDs."
+    if not isinstance(skipped, dict) or any(lens not in LENS_ORDER for lens in skipped):
+        return "Audit state has an invalid lens configuration; lenses_skipped must contain known lens IDs."
+    return None
+
+
+def _lens_status(lens: str, state: dict, finding_text: dict[str, str], unavailable_findings: set[str]) -> str:
     skipped = state.get("lenses_skipped") or {}
     if lens in skipped:
         return "skipped"
+    if f"findings/{lens}.md" in unavailable_findings:
+        return "unavailable"
     if f"findings/{lens}.md" in finding_text:
         return "complete"
     selected = state.get("lenses_to_run") or []
@@ -110,14 +124,20 @@ def _verdict(report: str | None) -> str | None:
 def snapshot_from_state(project_root: Path, audit_root: Path, state: dict) -> dict:
     finding_text: dict[str, str] = {}
     findings = []
+    unavailable_findings = set()
+    unreadable_artifacts = False
     counts = {"p0": 0, "p1": 0, "p2": 0, "unverified": 0}
     for path in _finding_files(audit_root):
         text = read_text_if_present(path)
         if text is None:
+            relative = f"findings/{path.name}"
+            unavailable_findings.add(relative)
+            findings.append({"path": relative, "available": False, "content": None})
+            unreadable_artifacts = True
             continue
         relative = f"findings/{path.name}"
         finding_text[relative] = text
-        findings.append({"path": relative, "content": text})
+        findings.append({"path": relative, "available": True, "content": text})
         for severity in ("p0", "p1", "p2"):
             counts[severity] += len(re.findall(
                 rf"(?im)(?:^\s*#+\s*|^\s*severity\s*:\s*){severity}\b", text
@@ -126,6 +146,12 @@ def snapshot_from_state(project_root: Path, audit_root: Path, state: dict) -> di
 
     report_text = read_text_if_present(audit_root / "report.md")
     ledger_text = read_text_if_present(audit_root / "evidence" / "absence-ledger.md")
+    report_path = audit_root / "report.md"
+    ledger_path = audit_root / "evidence" / "absence-ledger.md"
+    if report_path.exists() and report_text is None:
+        unreadable_artifacts = True
+    if ledger_path.exists() and ledger_text is None:
+        unreadable_artifacts = True
     stage_status = state.get("stage_status")
     status = "complete" if stage_status == "complete" else "running"
     artifacts = {
@@ -137,7 +163,7 @@ def snapshot_from_state(project_root: Path, audit_root: Path, state: dict) -> di
         {
             "id": lens,
             "label": LENS_LABELS[lens],
-            "status": _lens_status(lens, state, finding_text),
+            "status": _lens_status(lens, state, finding_text, unavailable_findings),
             "findingPath": f"findings/{lens}.md",
         }
         for lens in LENS_ORDER
@@ -155,7 +181,12 @@ def snapshot_from_state(project_root: Path, audit_root: Path, state: dict) -> di
         "lenses": lenses,
         "summary": {**counts, "verdict": _verdict(report_text)},
         "artifacts": artifacts,
-        "message": "Audit complete." if status == "complete" else "Audit is still running; wait for the remaining stages to finish.",
+        "message": (
+            "Audit artifacts are partially unavailable; wait for readable files before relying on this snapshot."
+            if unreadable_artifacts
+            else "Audit complete." if status == "complete"
+            else "Audit is still running; wait for the remaining stages to finish."
+        ),
     }
 
 
@@ -171,4 +202,7 @@ def build_snapshot(project_root: Path) -> dict:
         else:
             message = "Audit state is not available yet; wait for preflight to finish."
         return unavailable_snapshot(project_root, message)
+    invalid_state = _validate_state(state)
+    if invalid_state:
+        return unavailable_snapshot(project_root, invalid_state)
     return snapshot_from_state(project_root, audit_root, state)
