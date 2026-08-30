@@ -11,7 +11,7 @@ agents are present, they are attack surface. If they are absent, say so cleanly
 and stop.
 
 You are read-only over the project. The only file you may create or modify is
-`.readiness-audit/findings/ai-security.md`.
+`.readiness-audit/findings/ai-security.json`.
 
 ## First, the absence check
 
@@ -104,10 +104,16 @@ rejected in `.readiness-audit/deferred.md` with its trigger.
 
 `CONFIRMED` cites `file:line`. `NOT_FOUND` cites a zero-hit ledger probe.
 Provider-side controls you cannot see - rate limits configured in the vendor
-console, spend caps - are `UNVERIFIED` with a `resolve:` line.
+console, spend caps - are `UNVERIFIED` with a `resolve` field.
 
 ## Output
 
-Append blocks to `.readiness-audit/findings/ai-security.md`, IDs `PRA-AI-001`
+Write `.readiness-audit/findings/ai-security.json` in the documented JSON shape, IDs `PRA-AI-001`
+
+Every finding needs an `impact` line written for someone who will never
+open the codebase: what a user, the business, or the data loses, in one or two
+sentences, with no file, class, or framework names. The mechanism belongs in
+`failure_path`. This is the line the dashboard leads with, so a finding whose
+`impact` only restates the code is a finding nobody acts on.
 upward. Reply with at most ten lines: counts by severity, the most consequential
 thing the model can do unsupervised, and what you could not determine.

@@ -1,47 +1,82 @@
 # Finding format, evidence states, and severity
 
-Every lens writes to this format. It is markdown so the trail stays readable,
-and strict enough that `validate_findings.py` can check it mechanically. A
-finding that fails validation does not reach the report.
+Every lens writes structured JSON. That file is the source of truth: the
+dashboard renders it, the report is assembled from it, and the markdown trail a
+fix agent reads is *generated* from it, so the two can never disagree. A finding
+that fails validation does not reach the report.
 
-## The block
+## The file
 
-Append blocks to `.readiness-audit/findings/<your-lens>.md`. One block per
-finding, no prose between them.
+Write `.readiness-audit/findings/<your-lens>.json`. One object, one `findings`
+array. Do not write the `.md` file yourself - `finding_store.py render`
+generates it from your JSON.
 
-```
-### PRA-SEC-003 | Tenant identifier is read from the request body on order writes
-state: CONFIRMED
-severity: P0
-owner: security
-cross-lens: backend, database
-evidence: src/orders/orders.service.ts:88
-probe: -
-failure-path: OrdersController accepts tenantId in the POST body and passes it straight to the repository. Any authenticated user of tenant A can set tenantId to B and read or mutate B's orders. No guard re-derives tenant from the session.
-compensating: none found - the JWT does carry a tenant claim, but nothing compares it to the body value
-fix: Derive tenantId from the authenticated principal inside TenantGuard, strip it from CreateOrderDto, and add a repository-level scope filter so the field cannot be supplied by a caller at all.
-resolve: -
-see: -
+```json
+{
+  "schema": 1,
+  "lens": "security",
+  "findings": [
+    {
+      "id": "PRA-SEC-003",
+      "title": "Tenant identifier is read from the request body on order writes",
+      "impact": "Any logged-in customer can read and change another company's orders by editing one value in the request.",
+      "state": "CONFIRMED",
+      "severity": "P0",
+      "owner": "security",
+      "cross_lens": ["backend", "database"],
+      "evidence": ["src/orders/orders.service.ts:88"],
+      "probe": null,
+      "failure_path": "OrdersController accepts tenantId in the POST body and passes it straight to the repository. Any authenticated user of tenant A can set tenantId to B and read or mutate B's orders. No guard re-derives tenant from the session.",
+      "compensating": "none found - the JWT does carry a tenant claim, but nothing compares it to the body value",
+      "fix": "Derive tenantId from the authenticated principal inside TenantGuard, strip it from CreateOrderDto, and add a repository-level scope filter so the field cannot be supplied by a caller at all.",
+      "resolve": null,
+      "see": null
+    }
+  ]
+}
 ```
 
 ### Fields
 
 | Field | Meaning |
 | --- | --- |
-| `### PRA-<PREFIX>-<NNN>` | ID. Prefixes: `SEC`, `BE`, `FE`, `OPS`, `QA`, `DB`, `AI`. Number within your own lens, from 001. |
+| `id` | `PRA-<PREFIX>-<NNN>`. Prefixes: `SEC`, `BE`, `FE`, `OPS`, `QA`, `DB`, `AI`. Number within your own lens, from 001. |
+| `title` | One line naming the problem. Required. |
+| `impact` | **What this costs a non-technical reader.** See below. Required. |
 | `state` | `CONFIRMED`, `NOT_FOUND`, or `UNVERIFIED`. Exactly one. |
 | `severity` | `P0`, `P1`, `P2`, or `P3`. |
 | `owner` | Your lens, or the lens that owns it if you are cross-referencing. |
-| `cross-lens` | Other lenses this touches, comma separated. `-` if none. |
-| `evidence` | `path/to/file.ts:120` for CONFIRMED. For NOT_FOUND, the phrase "searched, not found in scope". |
-| `probe` | Absence-ledger control id. Required for NOT_FOUND. `-` otherwise. |
-| `failure-path` | The specific articulable path to harm. Required for P0. |
-| `compensating` | The mitigating control, or "none found". Required for P0. |
+| `cross_lens` | Array of other lenses this touches. `[]` if none. |
+| `evidence` | Array of `path/to/file.ts:120` strings for CONFIRMED. One entry per location - never a prose sentence. For NOT_FOUND, `["searched, not found in scope"]`. |
+| `probe` | Absence-ledger control id. Required for NOT_FOUND. `null` otherwise. |
+| `failure_path` | The specific articulable path to harm. Required for P0. |
+| `compensating` | The mitigating control, or `"none found"`. Required for P0. |
 | `fix` | Concrete remediation. Always required. |
 | `resolve` | What evidence would settle it. Required for UNVERIFIED. |
 | `see` | ID of the owning finding, when you are deferring to another lens. |
 
-Use `-` for fields that do not apply. Never leave a required field blank.
+Use `null` for fields that do not apply. Never leave a required field blank.
+
+### Writing `impact`
+
+`impact` is the only field a non-engineer reads. It is the headline of the
+finding on the dashboard, and it is the difference between a report someone acts
+on and a report someone closes.
+
+One or two sentences. No file names, no class names, no function names, no
+framework terms. Say what a user, the business, or the data loses - not what the
+code does. `failure_path` is where the mechanism goes; keep them distinct rather
+than writing the same sentence twice.
+
+| Instead of | Write |
+| --- | --- |
+| "`OrdersController` accepts `tenantId` in the POST body" | "Any logged-in customer can read and change another company's orders." |
+| "No rate limiting middleware on edge functions" | "One person can run up your API bill without an account, and nothing stops them." |
+| "`stripe-webhook` has no test coverage" | "If billing breaks, nothing catches it - you would find out when a customer complains." |
+
+For a `NOT_FOUND` or `UNVERIFIED` finding, `impact` describes what the missing
+control would have protected against, phrased as exposure rather than fact:
+"Nothing found that would restore this data after a bad deploy."
 
 ## Evidence states
 

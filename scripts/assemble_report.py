@@ -23,6 +23,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from validate_findings import parse_file, validate, LENS_PREFIX  # noqa: E402
+from finding_store import load_verdict, write_report  # noqa: E402
+
+DECISION_TEXT = {
+    "SHIP": "SHIP",
+    "FIX_THEN_SHIP": "FIX THEN SHIP",
+    "HOLD": "HOLD - DO NOT DEPLOY",
+}
 
 LENS_ORDER = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security"]
 LENS_TITLE = {
@@ -48,8 +55,12 @@ def load_findings(root: Path):
     out = []
     if not fdir.exists():
         return out
-    for f in sorted(fdir.glob("*.md")):
-        for fd in parse_file(f):
+    for f in sorted(fdir.glob("*.json")):
+        try:
+            parsed = parse_file(f)
+        except ValueError:
+            continue  # validate_findings.py reports this; the gate above blocks on it
+        for fd in parsed:
             fd["lens_file"] = f.stem
             out.append(fd)
     return out
@@ -157,10 +168,22 @@ def main():
     # ---- B ----
     A("## Section B - Executive Verdict")
     A("")
-    A("<!-- FILL: one of SHIP / FIX THEN SHIP / HOLD - DO NOT DEPLOY, then 3-5 sentences "
-      "for a CTO's go/no-go call. State explicitly how much of the verdict rests on "
-      f"UNVERIFIED areas - there are {len(unverified)} unverified findings. -->")
-    A("")
+    verdict, verdict_errors = load_verdict(root)
+    for message in verdict_errors:
+        print(message, file=sys.stderr)
+    if verdict["decision"] or verdict["headline"]:
+        A(f"**{DECISION_TEXT.get(verdict['decision'], verdict['decision'] or 'VERDICT')}**")
+        A("")
+        for paragraph in (verdict["headline"], verdict["summary"]):
+            if paragraph:
+                A(paragraph)
+                A("")
+    else:
+        A("<!-- FILL: write .readiness-audit/verdict.json with a decision of SHIP / "
+          "FIX_THEN_SHIP / HOLD, a headline, and a summary. State explicitly how much "
+          f"of the verdict rests on UNVERIFIED areas - there are {len(unverified)} "
+          "unverified findings. This section is generated from that file. -->")
+        A("")
 
     # ---- C / D ----
     for label, group in (("Section C - Production Blockers (P0)", p0),
@@ -312,10 +335,14 @@ def main():
     report = "\n".join(out)
     (d).mkdir(parents=True, exist_ok=True)
     (d / "report.md").write_text(report)
+    # report.json is what the dashboard reads. Writing it here keeps the two
+    # renderings of the same audit from ever drifting apart.
+    report_json = write_report(root)
 
     fills = report.count("<!-- FILL")
     print(json.dumps({
         "written_to": str(d / "report.md"),
+        "structured_report": str(report_json),
         "findings": len(findings), "p0": len(p0), "p1": len(p1),
         "debt": len(debt), "unverified": len(unverified),
         "fill_markers_remaining": fills,

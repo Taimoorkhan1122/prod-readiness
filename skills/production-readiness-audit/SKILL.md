@@ -45,9 +45,12 @@ find, and what you simply cannot see from here.
 │   ├── inventory.json              # Stage 2 - what exists
 │   ├── absence-ledger.{json,md}    # Stage 2 - what was searched for
 │   └── map.md                      # Stage 2 - the semantic map a script can't write
-├── findings/<lens>.md              # Stage 3 - one file per lens
+├── findings/<lens>.json            # Stage 3 - one file per lens, authored by the lens
+├── findings/<lens>.md              # Stage 4 - generated from the JSON, for fix agents
+├── verdict.json                    # Stage 5 - the go/no-go call, as data
 ├── deferred.md                     # controls considered and not yet needed
-└── report.md                       # Stage 5
+├── report.md                       # Stage 5 - the readable trail
+└── report.json                     # Stage 5 - what the dashboard renders
 ```
 
 `${CLAUDE_PLUGIN_ROOT}` is this plugin's own directory. Use it directly for all
@@ -167,34 +170,54 @@ lens back with the validator output rather than editing its findings yourself.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_findings.py" <root>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/finding_store.py" render <root>
 ```
 
 Exit code 1 means the report is blocked. The checks are the rules that are easy
 to state and easy to quietly break: CONFIRMED cites `file:line`; NOT_FOUND cites
 a zero-hit ledger row that the ledger agrees supports NOT_FOUND; UNVERIFIED says
 what would resolve it; P0 articulates a failure path and names its compensating
-control; absence is phrased as "not found in reviewed scope"; and no two lenses
-report the same underlying issue.
+control; absence is phrased as "not found in reviewed scope"; every finding has
+an `impact` line written for someone who will never open the codebase; and no two
+lenses report the same underlying issue.
 
 Fix by re-dispatching the owning lens. Resist the temptation to reword a finding
 into compliance - if a NOT_FOUND cannot cite a ledger row, the honest fix is
 usually that it should have been UNVERIFIED.
 
+The `render` step generates `findings/<lens>.md` from each lens's JSON, so the
+fix agents that come after this audit get the markdown trail they expect without
+anyone maintaining two copies. Never hand-edit the generated `.md`.
+
 ## Stage 5 - report
+
+Write the verdict first, as data, to `.readiness-audit/verdict.json`:
+
+```json
+{
+  "decision": "HOLD",
+  "headline": "Six confirmed blockers make this unsafe to deploy.",
+  "summary": "Two are trivially exploitable from a browser... State here how much of this call rests on what you could not see."
+}
+```
+
+`decision` is `SHIP`, `FIX_THEN_SHIP`, or `HOLD`. The rule is mechanical - any P0
+is HOLD, P1s alone are FIX THEN SHIP, neither is SHIP - but the sentence that
+matters most is the one in `summary` saying how much of the verdict rests on
+things you could not see. `headline` is one sentence a non-engineer reads first;
+it is the largest text on the dashboard.
+
+Then assemble:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assemble_report.py" <root>
 ```
 
-This generates every section that is arithmetic and leaves `<!-- FILL -->`
-markers where judgement is needed: the verdict, the RPO/RTO gap column, the
-scalability ordering, and each lens's closing line. Read
-`references/report-writing.md` and fill them all. The script reports how many
-remain; zero is the finish line.
-
-The verdict rule is mechanical - any P0 is HOLD, P1s alone are FIX THEN SHIP,
-neither is SHIP - but the sentence that matters most is the one saying how much
-of the verdict rests on things you could not see.
+This writes `report.md` and `report.json`. It generates every section that is
+arithmetic, renders Section B from `verdict.json`, and leaves `<!-- FILL -->`
+markers where judgement is still needed: the RPO/RTO gap column, the scalability
+ordering, and each lens's closing line. Read `references/report-writing.md` and
+fill them all. The script reports how many remain; zero is the finish line.
 
 ## A note on judgement
 

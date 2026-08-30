@@ -109,6 +109,19 @@ The dashboard prints an address such as `http://127.0.0.1:<port>/`. Open that
 URL if your browser does not open automatically. Press Ctrl-C to stop a
 manually launched dashboard.
 
+It opens on the decision, not the evidence: the verdict, how many findings block
+the release, and the handful that need attention first. Each finding leads with
+what it costs you in plain language — the file paths, the cause, and the fix are
+one click away, not in your face.
+
+![The dashboard's overview: a "Hold — do not deploy" verdict, counts for blocking
+and serious findings, and the findings that need attention first](assets/screenshots/after-overview.png)
+
+Open any finding for the cause, the evidence, and the fix:
+
+![A finding opened in a side panel, showing what it costs you, why it happens,
+what already protects you, how to fix it, and the exact file locations](assets/screenshots/after-detail.png)
+
 ### Update or fix the installation
 
 The **marketplace** and the **plugin** are separate. Adding the marketplace
