@@ -116,7 +116,7 @@ DASHBOARD_HTML = """<!doctype html>
         const findings = snapshot.artifacts.findings || [];
         const list = findings.length ? findings.map(finding => {
           const text = finding.available ? finding.content : 'Artifact is unavailable.';
-          const summary = String(text || '').split('\n').find(line => line.trim()) || finding.path;
+          const summary = String(text || '').split('\\n').find(line => line.trim()) || finding.path;
           return `<details><summary>${escapeHtml(finding.path)} — ${escapeHtml(summary)}</summary><pre>${escapeHtml(text)}</pre></details>`;
         }).join('') : '<p class="empty">No finding artifacts are available yet.</p>';
         return `<section class="panel"><h2>Findings</h2><p class="muted">Raw finding summaries from the current audit snapshot.</p>${list}</section>`;
