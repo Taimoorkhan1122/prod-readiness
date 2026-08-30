@@ -34,9 +34,143 @@ DASHBOARD_HTML = """<!doctype html>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Production Readiness</title>
+    <style>
+      :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; background: #0b1220; color: #e5edf9; }
+      * { box-sizing: border-box; } body { margin: 0; } button { font: inherit; }
+      .shell { max-width: 1180px; margin: auto; padding: 24px; } .topbar { display: flex; justify-content: space-between; gap: 20px; align-items: start; border-bottom: 1px solid #23324a; padding-bottom: 18px; }
+      h1, h2, h3, p { margin-top: 0; } h1 { font-size: 1.6rem; margin-bottom: 5px; } h2 { font-size: 1.1rem; } .muted { color: #a9b8cc; }
+      .nav { display: flex; flex-wrap: wrap; gap: 8px; } .nav button, .button { cursor: pointer; border: 1px solid #465b7d; border-radius: 7px; background: #17243a; color: inherit; padding: 8px 12px; }
+      .nav button[aria-current="page"] { background: #2559a7; border-color: #6fa4ff; } .summary { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: 12px; margin: 22px 0; }
+      .metric, .panel, .lens { border: 1px solid #253751; border-radius: 9px; background: #101b2c; padding: 15px; } .metric strong { display: block; font-size: 1.4rem; }
+      .timeline { display: grid; gap: 10px; } .timeline-item { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 13px; border-left: 3px solid #41658f; background: #101b2c; }
+      .lens-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-top: 14px; } .lens { text-align: left; cursor: pointer; color: inherit; }
+      .lens .status { display: block; margin-top: 8px; } .status { color: #9fb5d8; font-size: .88rem; text-transform: capitalize; } .status.complete { color: #62d89b; } .status.running { color: #ffd36d; } .status.unavailable { color: #ff9c9c; }
+      .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: .85rem/1.5 ui-monospace, monospace; color: #d3e1f5; }
+      details { border-top: 1px solid #253751; padding: 12px 0; } details:first-of-type { border-top: 0; } summary { cursor: pointer; color: #c9dcf9; } .empty { padding: 22px; text-align: center; }
+      .drawer-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .48); } .drawer { position: fixed; inset: 0 0 0 auto; width: min(560px, 94vw); background: #0d1728; border-left: 1px solid #415977; box-shadow: -12px 0 32px rgba(0, 0, 0, .35); padding: 24px; overflow: auto; }
+      .drawer-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; } .drawer-header button { background: transparent; color: inherit; border: 0; font-size: 1.4rem; cursor: pointer; }
+      @media (max-width: 720px) { .shell { padding: 16px; } .topbar, .columns { display: block; } .nav { margin-top: 16px; } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .columns > * { margin-bottom: 16px; } .timeline-item { grid-template-columns: 1fr; gap: 5px; } }
+    </style>
   </head>
   <body>
-    <main id="app"></main>
+    <main id="app" aria-live="polite"></main>
+    <script>
+      const app = document.getElementById('app');
+      let currentSnapshot = null;
+      let activeLens = null;
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, character => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[character]);
+      }
+
+      function routeFromHash() {
+        const route = window.location.hash.slice(1);
+        return ['overview', 'findings', 'evidence', 'report'].includes(route) ? route : 'overview';
+      }
+
+      function findingFor(snapshot, path) {
+        return (snapshot.artifacts.findings || []).find(finding => finding.path === path);
+      }
+
+      function statusClass(status) {
+        return ['complete', 'running', 'unavailable'].includes(status) ? status : 'waiting';
+      }
+
+      function lensCards(snapshot) {
+        return (snapshot.lenses || []).map(lens => `
+          <button class="lens" type="button" data-lens="${escapeHtml(lens.id)}">
+            <strong>${escapeHtml(lens.label)}</strong>
+            <span class="status ${statusClass(lens.status)}">${escapeHtml(lens.status)}</span>
+          </button>`).join('') || '<p class="empty">No lens status is available yet.</p>';
+      }
+
+      function lensDetail(snapshot) {
+        if (!activeLens) return '';
+        const lens = (snapshot.lenses || []).find(item => item.id === activeLens);
+        if (!lens) return '';
+        const finding = findingFor(snapshot, lens.findingPath);
+        const content = finding && finding.available ? finding.content : 'No readable finding artifact is available for this lens.';
+        return `<section class="panel" id="lens-detail"><div class="drawer-header"><div><h2>${escapeHtml(lens.label)} lens</h2><p class="status ${statusClass(lens.status)}">${escapeHtml(lens.status)}</p></div><button type="button" data-close-lens aria-label="Close lens detail">×</button></div><pre>${escapeHtml(content)}</pre></section>`;
+      }
+
+      function overview(snapshot) {
+        return `<section><div class="summary">
+          <div class="metric"><strong>${escapeHtml(snapshot.summary.p0)}</strong><span>P0 findings</span></div>
+          <div class="metric"><strong>${escapeHtml(snapshot.summary.p1)}</strong><span>P1 findings</span></div>
+          <div class="metric"><strong>${escapeHtml(snapshot.summary.p2)}</strong><span>P2 findings</span></div>
+          <div class="metric"><strong>${escapeHtml(snapshot.summary.unverified)}</strong><span>Unverified</span></div>
+          <div class="metric"><strong>${escapeHtml(snapshot.summary.verdict || 'Pending')}</strong><span>Verdict</span></div>
+        </div><div class="columns"><section class="panel"><h2>Current state</h2><div class="timeline">
+          <div class="timeline-item"><strong>Audit</strong><span class="status ${statusClass(snapshot.status)}">${escapeHtml(snapshot.status)}</span></div>
+          <div class="timeline-item"><strong>${escapeHtml(snapshot.stage.name || 'Waiting')}</strong><span>${escapeHtml(snapshot.stage.note || snapshot.message || 'No status note yet.')}</span></div>
+          <div class="timeline-item"><strong>Mode</strong><span>${escapeHtml(snapshot.executionMode || 'Not available')}</span></div>
+          <div class="timeline-item"><strong>Updated</strong><span>${escapeHtml(snapshot.updatedAt || 'Not available')}</span></div>
+        </div></section><section class="panel"><h2>Lens progress</h2><div class="lens-grid">${lensCards(snapshot)}</div></section></div>${lensDetail(snapshot)}</section>`;
+      }
+
+      function findings(snapshot) {
+        const findings = snapshot.artifacts.findings || [];
+        const list = findings.length ? findings.map(finding => {
+          const text = finding.available ? finding.content : 'Artifact is unavailable.';
+          const summary = String(text || '').split('\n').find(line => line.trim()) || finding.path;
+          return `<details><summary>${escapeHtml(finding.path)} — ${escapeHtml(summary)}</summary><pre>${escapeHtml(text)}</pre></details>`;
+        }).join('') : '<p class="empty">No finding artifacts are available yet.</p>';
+        return `<section class="panel"><h2>Findings</h2><p class="muted">Raw finding summaries from the current audit snapshot.</p>${list}</section>`;
+      }
+
+      function report(snapshot) {
+        const report = snapshot.artifacts.report || {};
+        const text = report.available ? report.content : 'The report artifact is not available yet.';
+        return `<section class="panel"><h2>Report</h2><pre>${escapeHtml(text)}</pre></section>`;
+      }
+
+      function evidenceDrawer(snapshot, visible) {
+        if (!visible) return '';
+        const artifact = snapshot.artifacts.evidenceLedger || {};
+        const text = artifact.available ? artifact.content : 'The evidence ledger is not available yet.';
+        return `<div class="drawer-backdrop" data-close-evidence><aside class="drawer" role="dialog" aria-modal="true" aria-label="Evidence ledger"><div class="drawer-header"><div><h2>Evidence</h2><p class="muted">Read-only absence ledger</p></div><button type="button" data-close-evidence aria-label="Close evidence">×</button></div><pre>${escapeHtml(text)}</pre></aside></div>`;
+      }
+
+      function render(snapshot) {
+        currentSnapshot = snapshot;
+        const route = routeFromHash();
+        const content = route === 'findings' ? findings(snapshot) : route === 'report' ? report(snapshot) : overview(snapshot);
+        app.innerHTML = `<div class="shell"><header class="topbar"><div><h1>Production readiness</h1><p class="muted">${escapeHtml(snapshot.message || 'Loading snapshot…')}</p></div><nav class="nav" aria-label="Dashboard views">
+          <button type="button" data-route="overview" ${route === 'overview' ? 'aria-current="page"' : ''}>Overview</button>
+          <button type="button" data-route="findings" ${route === 'findings' ? 'aria-current="page"' : ''}>Findings</button>
+          <button type="button" data-route="evidence" ${route === 'evidence' ? 'aria-current="page"' : ''}>Evidence</button>
+          <button type="button" data-route="report" ${route === 'report' ? 'aria-current="page"' : ''}>Report</button>
+        </nav></header>${content}</div>${evidenceDrawer(snapshot, route === 'evidence')}`;
+      }
+
+      app.addEventListener('click', event => {
+        const routeButton = event.target.closest('[data-route]');
+        if (routeButton) { window.location.hash = routeButton.dataset.route; return; }
+        const lensButton = event.target.closest('[data-lens]');
+        if (lensButton && currentSnapshot) { activeLens = lensButton.dataset.lens; window.location.hash = 'overview'; render(currentSnapshot); return; }
+        if (event.target.closest('[data-close-lens]')) { activeLens = null; render(currentSnapshot); return; }
+        if (event.target.closest('[data-close-evidence]')) { window.location.hash = 'overview'; }
+      });
+
+      window.addEventListener('hashchange', () => { if (currentSnapshot) render(currentSnapshot); });
+
+      async function refresh() {
+        try {
+          const response = await fetch('/api/snapshot', { cache: 'no-store' });
+          if (!response.ok) throw new Error(`Snapshot request failed (${response.status})`);
+          const snapshot = await response.json();
+          render(snapshot);
+          if (snapshot.status === 'running') setTimeout(refresh, 2000);
+        } catch (error) {
+          app.innerHTML = `<div class="shell"><section class="panel"><h1>Production readiness</h1><p>${escapeHtml(error.message || 'Unable to load the snapshot.')}</p></section></div>`;
+          setTimeout(refresh, 2000);
+        }
+      }
+
+      refresh();
+    </script>
   </body>
 </html>
 """

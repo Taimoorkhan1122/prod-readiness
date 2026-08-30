@@ -5,7 +5,25 @@ import threading
 import unittest
 from pathlib import Path
 
-from scripts.readiness_dashboard import build_snapshot, create_server, startup_url
+from scripts.readiness_dashboard import DASHBOARD_HTML, build_snapshot, create_server, startup_url
+
+
+class DashboardClientContractTests(unittest.TestCase):
+    def test_client_has_only_the_locked_navigation_destinations(self):
+        for route in ("overview", "findings", "evidence", "report"):
+            self.assertIn(f'data-route="{route}"', DASHBOARD_HTML)
+        self.assertNotIn("switcher", DASHBOARD_HTML)
+        self.assertNotIn("Back to dashboard", DASHBOARD_HTML)
+
+    def test_client_polls_snapshot_every_two_seconds_while_running(self):
+        self.assertIn("/api/snapshot", DASHBOARD_HTML)
+        self.assertIn("setTimeout(refresh, 2000)", DASHBOARD_HTML)
+        self.assertIn("snapshot.status === 'running'", DASHBOARD_HTML)
+
+    def test_client_escapes_artifact_content_and_has_no_remote_assets(self):
+        self.assertIn("function escapeHtml", DASHBOARD_HTML)
+        self.assertNotIn("https://", DASHBOARD_HTML)
+        self.assertNotIn("http://", DASHBOARD_HTML)
 
 
 class SnapshotTests(unittest.TestCase):
