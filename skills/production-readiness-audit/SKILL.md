@@ -87,6 +87,23 @@ dirty and execution mode. If it is dirty, say what is uncommitted and let the
 user decide before proceeding - an audit of an ambiguous working tree is hard
 to act on later.
 
+### Optional dashboard
+
+Only after `audit_state.py init` succeeds or the user confirms a state resume,
+start the following command as a managed background Bash task:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/readiness_dashboard.py" <root>
+```
+
+Wait only for the printed URL line or an immediate error. Best-effort open the
+URL, report it to the user, and continue immediately to Stage 1.
+
+If dashboard launch fails, tell the user it is unavailable and continue the audit.
+Do not wait for the dashboard process, use it as an audit agent, or change the selected parallel/sequential execution mode.
+
+Dashboard launch is non-fatal.
+
 Offer to add `.readiness-audit/` to `.gitignore`.
 
 Confirm the target is a local directory the user owns or is authorised to review.

@@ -92,6 +92,23 @@ You can also ask: “Run the production-readiness audit sequentially.” Sequent
 mode is useful when your computer has limited resources or you want to follow
 each specialist's work one step at a time.
 
+### Watch an audit in your browser (optional)
+
+After Claude successfully initializes a new audit or confirms a resume, it
+automatically starts a read-only dashboard in the background and continues the
+audit. The dashboard is local-only and listens on `127.0.0.1`; if it cannot
+start, the audit proceeds normally.
+
+To start it manually, run this in Claude Code:
+
+```text
+/prod-readiness:production-readiness-dashboard
+```
+
+The dashboard prints an address such as `http://127.0.0.1:<port>/`. Open that
+URL if your browser does not open automatically. Press Ctrl-C to stop a
+manually launched dashboard.
+
 ### Update or fix the installation
 
 The **marketplace** and the **plugin** are separate. Adding the marketplace
