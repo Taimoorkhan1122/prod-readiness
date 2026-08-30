@@ -25,6 +25,17 @@ class DashboardClientContractTests(unittest.TestCase):
         self.assertNotIn("https://", DASHBOARD_HTML)
         self.assertNotIn("http://", DASHBOARD_HTML)
 
+    def test_client_stops_polling_after_a_snapshot_request_failure(self):
+        refresh_function = DASHBOARD_HTML.split("async function refresh() {", 1)[1]
+        failure_handler = refresh_function.split("} catch (error) {", 1)[1]
+
+        self.assertNotIn("setTimeout(refresh, 2000)", failure_handler)
+
+    def test_evidence_drawer_does_not_close_when_its_contents_are_clicked(self):
+        self.assertNotIn('class="drawer-backdrop" data-close-evidence', DASHBOARD_HTML)
+        self.assertIn('data-evidence-backdrop', DASHBOARD_HTML)
+        self.assertIn("event.target.matches('[data-evidence-backdrop]')", DASHBOARD_HTML)
+
 
 class SnapshotTests(unittest.TestCase):
     def _write_state(self, audit, **overrides):

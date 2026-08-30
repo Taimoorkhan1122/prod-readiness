@@ -130,7 +130,7 @@ DASHBOARD_HTML = """<!doctype html>
         if (!visible) return '';
         const artifact = snapshot.artifacts.evidenceLedger || {};
         const text = artifact.available ? artifact.content : 'The evidence ledger is not available yet.';
-        return `<div class="drawer-backdrop" data-close-evidence><aside class="drawer" role="dialog" aria-modal="true" aria-label="Evidence ledger"><div class="drawer-header"><div><h2>Evidence</h2><p class="muted">Read-only absence ledger</p></div><button type="button" data-close-evidence aria-label="Close evidence">×</button></div><pre>${escapeHtml(text)}</pre></aside></div>`;
+        return `<div class="drawer-backdrop" data-evidence-backdrop><aside class="drawer" role="dialog" aria-modal="true" aria-label="Evidence ledger"><div class="drawer-header"><div><h2>Evidence</h2><p class="muted">Read-only absence ledger</p></div><button type="button" data-close-evidence aria-label="Close evidence">×</button></div><pre>${escapeHtml(text)}</pre></aside></div>`;
       }
 
       function render(snapshot) {
@@ -151,7 +151,7 @@ DASHBOARD_HTML = """<!doctype html>
         const lensButton = event.target.closest('[data-lens]');
         if (lensButton && currentSnapshot) { activeLens = lensButton.dataset.lens; window.location.hash = 'overview'; render(currentSnapshot); return; }
         if (event.target.closest('[data-close-lens]')) { activeLens = null; render(currentSnapshot); return; }
-        if (event.target.closest('[data-close-evidence]')) { window.location.hash = 'overview'; }
+        if (event.target.closest('[data-close-evidence]') || event.target.matches('[data-evidence-backdrop]')) { window.location.hash = 'overview'; }
       });
 
       window.addEventListener('hashchange', () => { if (currentSnapshot) render(currentSnapshot); });
@@ -165,7 +165,6 @@ DASHBOARD_HTML = """<!doctype html>
           if (snapshot.status === 'running') setTimeout(refresh, 2000);
         } catch (error) {
           app.innerHTML = `<div class="shell"><section class="panel"><h1>Production readiness</h1><p>${escapeHtml(error.message || 'Unable to load the snapshot.')}</p></section></div>`;
-          setTimeout(refresh, 2000);
         }
       }
 
