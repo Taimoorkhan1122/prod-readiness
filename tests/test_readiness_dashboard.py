@@ -1,9 +1,11 @@
+import http.client
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
-from scripts.readiness_dashboard import build_snapshot
+from scripts.readiness_dashboard import build_snapshot, create_server, startup_url
 
 
 class SnapshotTests(unittest.TestCase):
@@ -156,6 +158,54 @@ class SnapshotTests(unittest.TestCase):
         snapshot = build_snapshot(root)
 
         self.assertEqual(snapshot["lenses"][0]["status"], "unavailable")
+
+
+class DashboardHttpTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.server = create_server(self.root, port=0)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+
+    def request(self, path):
+        host, port = self.server.server_address
+        connection = http.client.HTTPConnection(host, port, timeout=2)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        body = response.read().decode()
+        connection.close()
+        return response, body
+
+    def test_server_binds_to_loopback_and_serves_snapshot(self):
+        self.assertEqual(self.server.server_address[0], "127.0.0.1")
+        response, body = self.request("/api/snapshot")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"), "application/json; charset=utf-8")
+        self.assertEqual(json.loads(body)["status"], "unavailable")
+
+    def test_server_serves_dashboard_and_unknown_paths_are_404(self):
+        root_response, root_body = self.request("/")
+        missing_response, _ = self.request("/unexpected")
+        self.assertEqual(root_response.status, 200)
+        self.assertIn('id="app"', root_body)
+        self.assertEqual(missing_response.status, 404)
+
+
+class DashboardStartupTests(unittest.TestCase):
+    def test_startup_url_uses_the_actual_ephemeral_port(self):
+        server = create_server(Path(tempfile.mkdtemp()), port=0)
+        host, port = server.server_address
+        try:
+            self.assertEqual(host, "127.0.0.1")
+            self.assertGreater(port, 0)
+            self.assertEqual(startup_url(server), f"http://127.0.0.1:{port}/")
+        finally:
+            server.server_close()
 
 
 if __name__ == "__main__":

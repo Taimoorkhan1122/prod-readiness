@@ -3,6 +3,8 @@
 
 import json
 import re
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
@@ -25,6 +27,65 @@ LENS_LABELS = {
     "database": "Database",
     "ai-security": "AI security",
 }
+
+DASHBOARD_HTML = """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Production Readiness</title>
+  </head>
+  <body>
+    <main id="app"></main>
+  </body>
+</html>
+"""
+
+
+class DashboardServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+    def __init__(self, project_root: Path, port: int):
+        self.project_root = project_root
+        super().__init__(("127.0.0.1", port), DashboardRequestHandler)
+
+
+class DashboardRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/":
+            return self.respond(HTTPStatus.OK, "text/html; charset=utf-8", DASHBOARD_HTML.encode())
+        if self.path == "/api/snapshot":
+            payload = json.dumps(build_snapshot(self.server.project_root)).encode()
+            return self.respond(HTTPStatus.OK, "application/json; charset=utf-8", payload)
+        self.send_error(HTTPStatus.NOT_FOUND)
+
+    def respond(self, status: HTTPStatus, content_type: str, body: bytes):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        return
+
+
+def create_server(project_root: Path, port: int = 0) -> ThreadingHTTPServer:
+    return DashboardServer(project_root, port)
+
+
+def startup_url(server: DashboardServer) -> str:
+    host, port = server.server_address
+    return f"http://{host}:{port}/"
+
+
+def serve(project_root: Path, port: int = 0) -> None:
+    server = create_server(project_root, port)
+    print(startup_url(server))
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
 
 
 def read_text_if_present(path: Path) -> str | None:
