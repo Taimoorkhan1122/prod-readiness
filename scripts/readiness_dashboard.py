@@ -91,8 +91,10 @@ def _finding_files(audit_root: Path):
 def _validate_state(state: dict) -> str | None:
     if state.get("stage_status") not in {"in_progress", "complete"}:
         return "Audit state has an unavailable stage status; wait for the audit to write a recognized stage status."
-    selected = state.get("lenses_to_run", [])
-    skipped = state.get("lenses_skipped", {})
+    if "lenses_to_run" not in state or "lenses_skipped" not in state:
+        return "Audit state has an invalid lens configuration; both lens configuration keys are required."
+    selected = state["lenses_to_run"]
+    skipped = state["lenses_skipped"]
     if not isinstance(selected, list) or any(lens not in LENS_ORDER for lens in selected):
         return "Audit state has an invalid lens configuration; lenses_to_run must contain known lens IDs."
     if not isinstance(skipped, dict) or any(lens not in LENS_ORDER for lens in skipped):
@@ -102,10 +104,10 @@ def _validate_state(state: dict) -> str | None:
 
 def _lens_status(lens: str, state: dict, finding_text: dict[str, str], unavailable_findings: set[str]) -> str:
     skipped = state.get("lenses_skipped") or {}
-    if lens in skipped:
-        return "skipped"
     if f"findings/{lens}.md" in unavailable_findings:
         return "unavailable"
+    if lens in skipped:
+        return "skipped"
     if f"findings/{lens}.md" in finding_text:
         return "complete"
     selected = state.get("lenses_to_run") or []

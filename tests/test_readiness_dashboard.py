@@ -117,6 +117,19 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["status"], "unavailable")
         self.assertIn("lens configuration", snapshot["message"])
 
+    def test_missing_lens_configuration_keys_are_unavailable(self):
+        root = Path(tempfile.mkdtemp())
+        audit = root / ".readiness-audit"
+        audit.mkdir()
+        (audit / "state.json").write_text(json.dumps({
+            "stage": "3-lenses", "stage_status": "in_progress", "notes": []
+        }))
+
+        snapshot = build_snapshot(root)
+
+        self.assertEqual(snapshot["status"], "unavailable")
+        self.assertIn("lens configuration", snapshot["message"])
+
     def test_unreadable_finding_is_retained_as_unavailable(self):
         root = Path(tempfile.mkdtemp())
         audit = root / ".readiness-audit"
@@ -132,6 +145,17 @@ class SnapshotTests(unittest.TestCase):
             "path": "findings/security.md", "available": False, "content": None,
         }])
         self.assertIn("unavailable", snapshot["message"])
+
+    def test_unreadable_finding_overrides_skipped_lens_status(self):
+        root = Path(tempfile.mkdtemp())
+        audit = root / ".readiness-audit"
+        (audit / "findings").mkdir(parents=True)
+        self._write_state(audit, lenses_to_run=[], lenses_skipped={"security": "Not in scope"})
+        (audit / "findings" / "security.md").write_bytes(b"\xff")
+
+        snapshot = build_snapshot(root)
+
+        self.assertEqual(snapshot["lenses"][0]["status"], "unavailable")
 
 
 if __name__ == "__main__":
