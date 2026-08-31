@@ -11,7 +11,7 @@ from scripts.readiness_dashboard import DASHBOARD_HTML, build_snapshot, create_s
 def write_findings(audit, lens, findings):
     (audit / "findings").mkdir(parents=True, exist_ok=True)
     (audit / "findings" / f"{lens}.json").write_text(
-        json.dumps({"schema": 1, "lens": lens, "findings": findings}))
+        json.dumps({"schema": 1, "lens": lens, "findings": findings}), encoding="utf-8")
 
 
 def finding(**overrides):
@@ -87,7 +87,7 @@ class SnapshotTests(unittest.TestCase):
         state = {"stage": "3-lenses", "stage_status": "in_progress",
                  "lenses_to_run": [], "lenses_skipped": {}}
         state.update(overrides)
-        (audit / "state.json").write_text(json.dumps(state))
+        (audit / "state.json").write_text(json.dumps(state), encoding="utf-8")
 
     def test_missing_audit_returns_unavailable_snapshot(self):
         snapshot = build_snapshot(Path(tempfile.mkdtemp()))
@@ -152,11 +152,11 @@ class SnapshotTests(unittest.TestCase):
         root = self._root()
         audit = root / ".readiness-audit"
         self._write_state(audit, stage_status="complete")
-        (audit / "report.md").write_text("## Executive Verdict\n\n**SHIP**\n")
+        (audit / "report.md").write_text("## Executive Verdict\n\n**SHIP**\n", encoding="utf-8")
         (audit / "verdict.json").write_text(json.dumps({
             "decision": "HOLD",
             "headline": "Two blockers make this unsafe to deploy.",
-        }))
+        }), encoding="utf-8")
 
         verdict = build_snapshot(root)["verdict"]
 
@@ -167,7 +167,9 @@ class SnapshotTests(unittest.TestCase):
         root = self._root()
         audit = root / ".readiness-audit"
         self._write_state(audit)
-        (audit / "verdict.json").write_text(json.dumps({"decision": "PROBABLY FINE"}))
+        (audit / "verdict.json").write_text(
+            json.dumps({"decision": "PROBABLY FINE"}), encoding="utf-8"
+        )
 
         snapshot = build_snapshot(root)
 
@@ -179,7 +181,7 @@ class SnapshotTests(unittest.TestCase):
         audit = root / ".readiness-audit"
         self._write_state(audit)
         write_findings(audit, "security", [finding()])
-        (audit / "findings" / "qa.json").write_text("{ not json")
+        (audit / "findings" / "qa.json").write_text("{ not json", encoding="utf-8")
 
         snapshot = build_snapshot(root)
 
@@ -202,7 +204,7 @@ class SnapshotTests(unittest.TestCase):
     def test_malformed_state_degrades_instead_of_raising(self):
         root = self._root()
         audit = root / ".readiness-audit"
-        (audit / "state.json").write_text("{ not json")
+        (audit / "state.json").write_text("{ not json", encoding="utf-8")
         write_findings(audit, "security", [finding()])
 
         snapshot = build_snapshot(root)
@@ -222,7 +224,7 @@ class SnapshotTests(unittest.TestCase):
                               "hit_count": 2, "supports_state": "NOT_FOUND",
                               "hits": [{"path": "infra/backup.tf"}, {"path": "README.md"}]},
             "a_branch_selector": {"polarity": "branch", "label": "ignored", "hit_count": 5},
-        }}))
+        }}), encoding="utf-8")
 
         rows = {row["id"]: row for row in build_snapshot(root)["evidence"]}
 
