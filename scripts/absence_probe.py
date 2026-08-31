@@ -82,7 +82,7 @@ def collect(root: Path):
         try:
             if p.stat().st_size > MAX_FILE_BYTES:
                 continue
-            text = p.read_text(errors="replace")
+            text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         rel = p.relative_to(root).as_posix()
@@ -621,9 +621,11 @@ def main():
 
     outdir = Path(args.out) if args.out else root / ".readiness-audit" / "evidence"
     outdir.mkdir(parents=True, exist_ok=True)
-    (outdir / "absence-ledger.json").write_text(json.dumps(ledger, indent=2) + "\n")
+    (outdir / "absence-ledger.json").write_text(
+        json.dumps(ledger, indent=2) + "\n", encoding="utf-8"
+    )
     if not args.json_only:
-        (outdir / "absence-ledger.md").write_text(render_md(ledger))
+        (outdir / "absence-ledger.md").write_text(render_md(ledger), encoding="utf-8")
 
     absent = [r["id"] for r in results.values()
               if r["polarity"] == "control" and r["supports_state"] == "NOT_FOUND"]

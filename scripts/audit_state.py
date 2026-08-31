@@ -61,7 +61,7 @@ def _load(root: Path):
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text())
+        return json.loads(p.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
 
@@ -69,7 +69,7 @@ def _load(root: Path):
 def _save(root: Path, state):
     _dir(root).mkdir(parents=True, exist_ok=True)
     state["updated_at"] = _now()
-    _file(root).write_text(json.dumps(state, indent=2) + "\n")
+    _file(root).write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 
 
 def cmd_init(root: Path, execution_mode: str):

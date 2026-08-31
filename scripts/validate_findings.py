@@ -107,7 +107,7 @@ def validate(root: Path):
     lpath = d / "evidence" / "absence-ledger.json"
     if lpath.exists():
         try:
-            ledger = json.loads(lpath.read_text()).get("controls", {})
+            ledger = json.loads(lpath.read_text(encoding="utf-8")).get("controls", {})
         except json.JSONDecodeError:
             errors.append(("absence-ledger.json", "-", "ledger is not valid JSON; re-run absence_probe.py"))
     else:
