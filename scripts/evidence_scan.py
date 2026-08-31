@@ -68,7 +68,7 @@ def read(p: Path, limit=1_500_000):
     try:
         if p.stat().st_size > limit:
             return ""
-        return p.read_text(errors="replace")
+        return p.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
 
@@ -182,7 +182,9 @@ def main():
 
     outdir = Path(args.out) if args.out else root / ".readiness-audit" / "evidence"
     outdir.mkdir(parents=True, exist_ok=True)
-    (outdir / "inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
+    (outdir / "inventory.json").write_text(
+        json.dumps(inventory, indent=2) + "\n", encoding="utf-8"
+    )
 
     print(json.dumps({
         "total_files": total_files,

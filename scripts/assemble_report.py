@@ -116,12 +116,12 @@ def main():
     lpath = d / "evidence" / "absence-ledger.json"
     ledger_meta = {}
     if lpath.exists():
-        raw = json.loads(lpath.read_text())
+        raw = json.loads(lpath.read_text(encoding="utf-8"))
         ledger = raw.get("controls", {})
         ledger_meta = {k: v for k, v in raw.items() if k != "controls"}
 
     state_file = d / "state.json"
-    state = json.loads(state_file.read_text()) if state_file.exists() else {}
+    state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
 
     def sev(fd):
         return fd["fields"].get("severity", "").strip().upper()
@@ -149,7 +149,7 @@ def main():
         p = d / name
         A(f"### {heading}")
         A("")
-        A(p.read_text().strip() if p.exists()
+        A(p.read_text(encoding="utf-8").strip() if p.exists()
           else f"<!-- FILL: {name} was not written; state the assumptions here -->")
         A("")
     if state.get("lenses_skipped"):
@@ -232,7 +232,7 @@ def main():
     A("## Section F - Deferred Controls")
     A("")
     dfile = d / "deferred.md"
-    A(dfile.read_text().strip() if dfile.exists()
+    A(dfile.read_text(encoding="utf-8").strip() if dfile.exists()
       else "<!-- FILL: controls considered and judged not yet necessary, each with the "
            "concrete trigger that should revisit it (\"needed when: >5k users / "
            "internet-facing / PCI scope\"). Also name controls deliberately deemed "
@@ -334,7 +334,7 @@ def main():
 
     report = "\n".join(out)
     (d).mkdir(parents=True, exist_ok=True)
-    (d / "report.md").write_text(report)
+    (d / "report.md").write_text(report, encoding="utf-8")
     # report.json is what the dashboard reads. Writing it here keeps the two
     # renderings of the same audit from ever drifting apart.
     report_json = write_report(root)
