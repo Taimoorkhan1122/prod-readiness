@@ -25,14 +25,14 @@ class AuditStateExecutionModeTests(unittest.TestCase):
         result, root = initialize()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        state = json.loads((root / ".readiness-audit" / "state.json").read_text())
+        state = json.loads((root / ".readiness-audit" / "state.json").read_text(encoding="utf-8"))
         self.assertEqual(state["execution_mode"], "parallel")
 
     def test_init_persists_requested_sequential_execution(self):
         result, root = initialize("sequential")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        state = json.loads((root / ".readiness-audit" / "state.json").read_text())
+        state = json.loads((root / ".readiness-audit" / "state.json").read_text(encoding="utf-8"))
         self.assertEqual(state["execution_mode"], "sequential")
 
 
