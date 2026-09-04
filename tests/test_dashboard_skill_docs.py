@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -16,9 +17,16 @@ class DashboardSkillDocumentationTests(unittest.TestCase):
     def test_audit_starts_dashboard_without_changing_parallel_default(self):
         audit_skill = (ROOT / "skills/production-readiness-audit/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("readiness_dashboard.py", audit_skill)
-        self.assertIn("managed background Bash task", audit_skill)
+        self.assertIn("idempotent", audit_skill)
         self.assertIn("Parallel is the default", audit_skill)
         self.assertIn("non-fatal", audit_skill)
+
+    def test_launch_hook_is_registered_for_bash_tool_use(self):
+        hooks = json.loads((ROOT / "hooks/hooks.json").read_text(encoding="utf-8"))
+        matchers = hooks["hooks"]["PostToolUse"]
+        commands = [hook["command"] for entry in matchers for hook in entry["hooks"]]
+        self.assertTrue(any("launch_dashboard_hook.py" in command for command in commands))
+        self.assertTrue(any(entry.get("matcher") == "Bash" for entry in matchers))
 
     def test_readme_explains_automatic_and_manual_dashboard_use(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

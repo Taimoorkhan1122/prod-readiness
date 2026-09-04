@@ -10,7 +10,16 @@ should never have to read a file path to get an answer.
 
 import argparse
 import json
+import os
+import signal
+import subprocess
 import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+import webbrowser
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,6 +28,17 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).parent))
 
 from finding_store import LENS_LABEL, LENS_ORDER, build_report  # noqa: E402
+from progress import read_progress  # noqa: E402
+
+# Bumped when the shape of dashboard.json changes. A handshake file carrying an
+# unknown version is treated as stale rather than migrated: it is a cache, and
+# the running server is the source of truth.
+HANDSHAKE_SCHEMA = 1
+HANDSHAKE_NAME = "dashboard.json"
+LOG_NAME = "dashboard.log"
+HANDSHAKE_TIMEOUT_SECONDS = 5.0
+HEALTH_TIMEOUT_SECONDS = 0.5
+IDLE_TIMEOUT_SECONDS = 3600.0
 
 DASHBOARD_HTML = """<!doctype html>
 <html lang="en">
@@ -69,6 +89,17 @@ DASHBOARD_HTML = """<!doctype html>
       .live { display:flex; align-items:center; gap:7px; font-size:.83rem; font-weight:650; color:var(--green); }
       .live:before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 0 4px #d9f3e8; }
       .live.done { color:var(--muted); } .live.done:before { box-shadow:0 0 0 4px #e6e9e8; }
+      .export { border:1px solid var(--line); background:var(--white); border-radius:8px;
+        padding:7px 11px; font-size:.82rem; font-weight:750; color:var(--ink); }
+      .export:hover:enabled { border-color:#5c8ce2; color:var(--blue); }
+      .export:disabled { opacity:.55; cursor:progress; }
+
+      .feed { list-style:none; margin:16px 0 0; padding:0; }
+      .feed li { display:grid; grid-template-columns:150px 130px minmax(0,1fr) auto; gap:12px;
+        padding:9px 0; border-bottom:1px solid var(--line); font-size:.85rem; align-items:baseline; }
+      .feed b { font-size:.83rem; }
+      .feed .phase { color:var(--blue); font-weight:650; font-size:.78rem; }
+      .lens em.silent { color:var(--amber); }
 
       .hero { display:grid; grid-template-columns:1.4fr .6fr; gap:36px; align-items:end; padding:52px 0 34px; }
       .decision { display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px;
@@ -177,6 +208,7 @@ DASHBOARD_HTML = """<!doctype html>
       @media (max-width:860px) {
         .hero { grid-template-columns:1fr; gap:26px; padding:34px 0 26px; }
         .matrix { grid-template-columns:repeat(4,1fr); }
+        .feed li { grid-template-columns:1fr; gap:2px; }
       }
       @media (max-width:620px) {
         .shell { padding:20px 17px 70px; }
@@ -197,6 +229,7 @@ DASHBOARD_HTML = """<!doctype html>
     <script>
       const app = document.getElementById('app');
       let snapshot = null;
+      let exportResult = null;
 
       const ROUTES = ['overview', 'findings', 'evidence', 'report'];
       const SEVERITY_ORDER = ['P0', 'P1', 'P2', 'P3'];
@@ -249,6 +282,7 @@ DASHBOARD_HTML = """<!doctype html>
           <div class="brand"><span class="mark" aria-hidden="true"></span> prod-readiness</div>
           <nav class="nav" aria-label="Dashboard views">${tabs.map(([id, label]) =>
             `<button type="button" data-view="${id}" ${current === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>
+          <button type="button" class="export" data-export="1">Export report</button>
           <span class="live ${running ? '' : 'done'}">${running ? 'Audit running' : 'Audit complete'}</span>
         </header>`;
       }
@@ -295,21 +329,92 @@ DASHBOARD_HTML = """<!doctype html>
         </section>`;
       }
 
+      const PHASE_LABEL = {
+        'started': 'Starting', 'evidence-read': 'Reading evidence', 'analyzing': 'Analyzing',
+        'writing-findings': 'Writing findings', 'done': 'Finished'
+      };
+
+      function elapsed(seconds) {
+        if (seconds == null) return '';
+        const value = Math.max(0, Math.round(seconds));
+        if (value < 60) return `${value}s ago`;
+        if (value < 3600) return `${Math.round(value / 60)}m ago`;
+        return `${Math.round(value / 3600)}h ago`;
+      }
+
+      // A lens that has said nothing is shown as silent, never as progress. An
+      // invented "in progress" is the one thing a live view must not do.
+      function lensActivity(lensId) {
+        const record = (snapshot.progress || {})[lensId];
+        if (!record || !record.events || !record.events.length) return null;
+        const latest = record.events[record.events.length - 1];
+        return {
+          phase: PHASE_LABEL[latest.phase] || latest.phase,
+          note: latest.note || '',
+          when: elapsed(record.seconds_since_latest),
+          silent: record.signal === 'no-signal'
+        };
+      }
+
       function lensMatrix() {
         const cells = snapshot.lenses.map(lens => {
+          const activity = lensActivity(lens.id);
           const worst = lens.counts.p0 ? `${lens.counts.p0} blocking`
             : lens.counts.p1 ? `${lens.counts.p1} to fix`
             : lens.counts.total ? `${lens.counts.total} noted`
             : { complete: 'Nothing found', skipped: 'Not applicable', running: 'Reviewing now' }[lens.status] || 'Waiting';
+          const live = activity && lens.status !== 'complete'
+            ? `<em class="${activity.silent ? 'silent' : ''}">${escapeHtml(
+                activity.silent ? `No signal since ${activity.when}` : `${activity.phase} - ${activity.when}`)}</em>`
+            : '';
           return `<button class="lens ${escapeHtml(lens.status)}" type="button" data-lens="${escapeHtml(lens.id)}">
             <span class="dot ${escapeHtml(lens.status)}" aria-hidden="true"></span>
             <b>${escapeHtml(lens.label)}</b>
+            ${live}
             <em>${escapeHtml(worst)}</em>
           </button>`;
         }).join('');
         return `<section class="band"><div class="band-head"><h2>What was reviewed</h2>
           <p>Seven specialists, each writing only its own findings.</p></div>
           <div class="matrix">${cells}</div></section>`;
+      }
+
+      function activityFeed() {
+        const progress = snapshot.progress || {};
+        const events = [];
+        Object.entries(progress).forEach(([lensId, record]) =>
+          (record.events || []).forEach(event => events.push({ ...event, lensId })));
+        if (!events.length) return '';
+        events.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+        const labelFor = id => (snapshot.lenses.find(lens => lens.id === id) || {}).label || id;
+        const rows = events.slice(0, 40).map(event => `<li>
+          <b>${escapeHtml(labelFor(event.lensId))}</b>
+          <span class="phase">${escapeHtml(PHASE_LABEL[event.phase] || event.phase)}</span>
+          <span>${escapeHtml(event.note || '')}</span>
+          <time class="mono muted">${escapeHtml(String(event.ts).slice(11, 19))}</time>
+        </li>`).join('');
+        return `<section class="band"><div class="band-head"><h2>Activity</h2>
+          <p>What each specialist reported while it worked.</p></div>
+          <ul class="feed">${rows}</ul></section>`;
+      }
+
+      async function runExport(button) {
+        button.disabled = true;
+        const original = button.textContent;
+        button.textContent = 'Exporting...';
+        try {
+          const response = await fetch('/api/export', { method: 'POST' });
+          const result = await response.json();
+          button.textContent = result.ok ? 'Exported' : 'Export failed';
+          exportResult = result.ok
+            ? `Export written to ${result.directory}`
+            : `Export failed: ${result.error || 'unknown error'}`;
+        } catch (error) {
+          button.textContent = 'Export failed';
+          exportResult = `Export failed: ${error.message || error}`;
+        }
+        render();
+        setTimeout(() => { button.textContent = original; button.disabled = false; }, 4000);
       }
 
       function findingRow(finding) {
@@ -341,7 +446,9 @@ DASHBOARD_HTML = """<!doctype html>
         const notice = errors.length
           ? `<div class="notice">${escapeHtml(errors[0])}${errors.length > 1 ? ` (and ${errors.length - 1} more)` : ''}</div>`
           : '';
-        return `${hero()}${notice}${topFindings()}${lensMatrix()}`;
+        const exported = exportResult
+          ? `<div class="notice mono">${escapeHtml(exportResult)}</div>` : '';
+        return `${hero()}${notice}${exported}${topFindings()}${lensMatrix()}${activityFeed()}`;
       }
 
       function findingsView() {
@@ -529,6 +636,8 @@ DASHBOARD_HTML = """<!doctype html>
       }
 
       app.addEventListener('click', event => {
+        const exportButton = event.target.closest('[data-export]');
+        if (exportButton) return runExport(exportButton);
         const view = event.target.closest('[data-view]');
         if (view) return navigate({ view: view.dataset.view, finding: null, open: null });
         const finding = event.target.closest('[data-finding]');
@@ -561,12 +670,22 @@ DASHBOARD_HTML = """<!doctype html>
           snapshot = await response.json();
           render();
           if (snapshot.status === 'running') setTimeout(refresh, 2000);
+          else setTimeout(keepalive, 30000);
         } catch (error) {
           app.innerHTML = `<div class="shell"><section class="band" style="border-top:0">
             <h1>Production readiness</h1>
             <p class="lede">${escapeHtml(error.message || 'The snapshot could not be loaded.')}</p>
           </section></div>`;
         }
+      }
+
+      // A finished audit stops polling for new data, but the server counts
+      // requests to decide whether anyone is still reading. Without this an
+      // open tab would go quiet and the idle timer would close the report out
+      // from under the person reading it.
+      async function keepalive() {
+        try { await fetch('/api/ping'); } catch (error) { return; }
+        setTimeout(keepalive, 30000);
       }
 
       refresh();
@@ -648,6 +767,7 @@ def build_snapshot(project_root: Path) -> dict:
                        for lens in LENS_ORDER],
             "findings": [],
             "evidence": [],
+            "progress": {},
             "gitRef": None,
             "errors": [],
         }
@@ -658,6 +778,7 @@ def build_snapshot(project_root: Path) -> dict:
     report["message"] = ("Audit complete." if report["status"] == "complete"
                          else "Audit is still running.")
     report["evidence"] = load_evidence(audit_root)
+    report["progress"] = read_progress(project_root)
     report["auditRoot"] = str(audit_root)
     return report
 
@@ -667,7 +788,14 @@ class DashboardServer(ThreadingHTTPServer):
 
     def __init__(self, project_root: Path, port: int):
         self.project_root = project_root
+        self.last_activity = time.monotonic()
         super().__init__(("127.0.0.1", port), DashboardRequestHandler)
+
+    def note_activity(self) -> None:
+        self.last_activity = time.monotonic()
+
+    def seconds_idle(self) -> float:
+        return time.monotonic() - self.last_activity
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
@@ -675,13 +803,38 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         # The dashboard keeps its view, filters, and open finding in the query
         # string, so every route arrives here as "/?view=..." and must still
         # serve the app shell.
+        self.server.note_activity()
         path = urlsplit(self.path).path
         if path == "/":
             return self.respond(HTTPStatus.OK, "text/html; charset=utf-8", DASHBOARD_HTML.encode())
         if path == "/api/snapshot":
             payload = json.dumps(build_snapshot(self.server.project_root)).encode()
             return self.respond(HTTPStatus.OK, "application/json; charset=utf-8", payload)
+        if path == "/api/ping":
+            # Deliberately cheap. Its only job is to prove a reader is still
+            # here, so it must not rebuild the report.
+            return self.respond(HTTPStatus.OK, "application/json; charset=utf-8", b'{"ok":true}')
         self.send_error(HTTPStatus.NOT_FOUND)
+
+    def do_POST(self):
+        # The one write the dashboard performs. It produces derived documents
+        # under .readiness-audit/export/ and touches no audit state, so the
+        # dashboard stays an observer of the audit rather than a control over
+        # it.
+        self.server.note_activity()
+        if urlsplit(self.path).path != "/api/export":
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        try:
+            from export_report import export
+
+            directory = export(self.server.project_root)
+        except Exception as error:  # noqa: BLE001 - reported to the browser
+            payload = json.dumps({"ok": False, "error": str(error)}).encode()
+            return self.respond(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                "application/json; charset=utf-8", payload)
+        files = sorted(item.name for item in Path(directory).iterdir())
+        payload = json.dumps({"ok": True, "directory": str(directory), "files": files}).encode()
+        return self.respond(HTTPStatus.OK, "application/json; charset=utf-8", payload)
 
     def respond(self, status: HTTPStatus, content_type: str, body: bytes):
         self.send_response(status)
@@ -703,21 +856,246 @@ def startup_url(server: DashboardServer) -> str:
     return f"http://{host}:{port}/"
 
 
-def serve(project_root: Path, port: int = 0) -> None:
+# --------------------------------------------------------------------------
+# Handshake file
+#
+# The launcher and the server communicate through one small file rather than
+# through stdout. Scraping a log line for a URL is what made starting the
+# dashboard unreliable: it depended on whoever ran the command reading the
+# output correctly and at the right moment.
+# --------------------------------------------------------------------------
+
+
+def audit_root_for(project_root: Path) -> Path:
+    return (Path(project_root) / ".readiness-audit").resolve()
+
+
+def handshake_path(project_root: Path) -> Path:
+    return audit_root_for(project_root) / HANDSHAKE_NAME
+
+
+def write_handshake(project_root: Path, url: str, port: int) -> Path:
+    """Publish the running server's address, atomically."""
+    path = handshake_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": HANDSHAKE_SCHEMA,
+        "url": url,
+        "port": port,
+        "pid": os.getpid(),
+        "audit_root": str(audit_root_for(project_root)),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+    return path
+
+
+def read_handshake(project_root: Path) -> dict | None:
+    """Return a usable handshake record, or None.
+
+    Anything unreadable, malformed, incomplete, or written by a schema this
+    version does not know is reported as absent. The file is a cache; a bad
+    cache entry must never block a launch.
+    """
+    path = handshake_path(project_root)
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(record, dict) or record.get("schema") != HANDSHAKE_SCHEMA:
+        return None
+    if not all(record.get(key) for key in ("url", "pid", "audit_root")):
+        return None
+    return record
+
+
+def health_check(url: str, expected_audit_root: Path,
+                 timeout: float = HEALTH_TIMEOUT_SECONDS) -> bool:
+    """Is a dashboard for *this* audit answering on that URL?
+
+    A live port serving the right audit root is proof. A recorded PID is not:
+    process identifiers are reused, so trusting one can point at a stranger's
+    process after a reboot.
+    """
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/api/snapshot", timeout=timeout) as response:
+            if response.status != HTTPStatus.OK:
+                return False
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
+        return False
+    return payload.get("auditRoot") == str(expected_audit_root)
+
+
+def find_running(project_root: Path) -> dict | None:
+    """The healthy dashboard already serving this audit, if there is one."""
+    record = read_handshake(project_root)
+    if record is None:
+        return None
+    if record["audit_root"] != str(audit_root_for(project_root)):
+        return None
+    if not health_check(record["url"], audit_root_for(project_root)):
+        return None
+    return record
+
+
+# --------------------------------------------------------------------------
+# Serving
+# --------------------------------------------------------------------------
+
+
+def _watch_idle(server: DashboardServer, timeout: float) -> None:
+    while True:
+        time.sleep(min(30.0, max(1.0, timeout / 4)))
+        if server.seconds_idle() > timeout:
+            threading.Thread(target=server.shutdown, daemon=True).start()
+            return
+
+
+def serve(project_root: Path, port: int = 0,
+          idle_timeout: float | None = IDLE_TIMEOUT_SECONDS) -> None:
+    """Run the server in this process until it is stopped or goes idle."""
     server = create_server(project_root, port)
-    print(startup_url(server), flush=True)
+    url = startup_url(server)
+    write_handshake(project_root, url, server.server_address[1])
+    print(url, flush=True)
+    if idle_timeout:
+        threading.Thread(target=_watch_idle, args=(server, idle_timeout), daemon=True).start()
     try:
         server.serve_forever()
     finally:
         server.server_close()
+        _clear_own_handshake(project_root)
+
+
+def _clear_own_handshake(project_root: Path) -> None:
+    record = read_handshake(project_root)
+    if record and record.get("pid") == os.getpid():
+        handshake_path(project_root).unlink(missing_ok=True)
+
+
+# --------------------------------------------------------------------------
+# Launching
+# --------------------------------------------------------------------------
+
+
+def spawn_detached(project_root: Path, port: int) -> None:
+    """Start the server in a process that survives this one.
+
+    The dashboard outlives the session that started it, because a reviewer
+    reads the report after the audit ends. os.fork is unavailable on Windows,
+    so the launcher re-runs this same file in server mode instead.
+    """
+    audit_root = audit_root_for(project_root)
+    audit_root.mkdir(parents=True, exist_ok=True)
+    log_path = audit_root / LOG_NAME
+    command = [sys.executable, str(Path(__file__).resolve()),
+               str(Path(project_root).resolve()), "--serve", "--port", str(port)]
+
+    kwargs: dict = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
+                                   | getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
+    else:
+        kwargs["start_new_session"] = True
+
+    # Truncated on every real start. When the handshake times out this file is
+    # the only diagnosis available, so it is written rather than discarded.
+    log = open(log_path, "w", encoding="utf-8")
+    try:
+        subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
+                         stdin=subprocess.DEVNULL, close_fds=True, **kwargs)
+    finally:
+        log.close()
+
+
+def _await_handshake(project_root: Path, timeout: float) -> dict | None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        record = find_running(project_root)
+        if record is not None:
+            return record
+        time.sleep(0.1)
+    return None
+
+
+def open_browser(url: str) -> bool:
+    """Open the dashboard if this machine plausibly has a browser."""
+    if os.environ.get("CLAUDE_CODE_REMOTE"):
+        return False
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def launch(project_root: Path, port: int = 0, open_in_browser: bool = True,
+           timeout: float = HANDSHAKE_TIMEOUT_SECONDS) -> dict | None:
+    """Ensure a dashboard is serving this audit, and return its record.
+
+    Idempotent by design: the audit skill and the launch hook may both call
+    this, and a second call must reuse the first server rather than start a
+    competing one.
+    """
+    running = find_running(project_root)
+    if running is None:
+        spawn_detached(project_root, port)
+        running = _await_handshake(project_root, timeout)
+    if running is None:
+        return None
+    if open_in_browser:
+        open_browser(running["url"])
+    return running
+
+
+def stop(project_root: Path) -> bool:
+    """Stop the dashboard serving this audit, if it is really ours.
+
+    Identity is checked before anything is signalled. A handshake file that
+    fails its health check is stale, and a stale record is deleted rather than
+    used to kill whatever now owns that process identifier.
+    """
+    record = read_handshake(project_root)
+    if record is None:
+        return False
+    if not health_check(record["url"], audit_root_for(project_root)):
+        handshake_path(project_root).unlink(missing_ok=True)
+        return False
+    try:
+        os.kill(int(record["pid"]), signal.SIGTERM)
+    except (OSError, ValueError, TypeError):
+        return False
+    handshake_path(project_root).unlink(missing_ok=True)
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Serve a read-only production-readiness dashboard.")
     parser.add_argument("project_root", type=Path, help="Target project root containing .readiness-audit")
     parser.add_argument("--port", type=int, default=0, help="Port to bind on 127.0.0.1 (default: ephemeral)")
+    parser.add_argument("--serve", action="store_true",
+                        help="Run the server in this process (used by the launcher)")
+    parser.add_argument("--no-open", action="store_true", help="Do not open a browser")
+    parser.add_argument("--stop", action="store_true", help="Stop the dashboard for this project")
     args = parser.parse_args(argv)
-    serve(args.project_root, args.port)
+
+    if args.stop:
+        stopped = stop(args.project_root)
+        print("stopped" if stopped else "no running dashboard found", flush=True)
+        return 0 if stopped else 1
+
+    if args.serve:
+        serve(args.project_root, args.port)
+        return 0
+
+    record = launch(args.project_root, args.port, open_in_browser=not args.no_open)
+    if record is None:
+        log = audit_root_for(args.project_root) / LOG_NAME
+        print(f"dashboard failed to start; see {log}", file=sys.stderr, flush=True)
+        return 1
+    print(record["url"], flush=True)
     return 0
 
 

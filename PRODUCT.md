@@ -30,7 +30,7 @@ Live progress plus a skimmable, markdown-rendered verdict — the thing a plain 
 - Zero external dependencies: implemented with Python's stdlib `http.server` (`ThreadingHTTPServer`/`BaseHTTPRequestHandler`) only — no Flask/FastAPI/etc.
 - Single-file delivery: the HTML/CSS/JS is an embedded string (`DASHBOARD_HTML`) inside `scripts/readiness_dashboard.py`, served as one response — no separate static asset pipeline.
 - No authentication (matches local-only, single-user trust model).
-- Read-only with respect to the audit: the dashboard displays state, it does not mutate audit data.
+- Read-only with respect to the audit: the dashboard displays state, it does not mutate audit data. Its one write is the export, which produces derived documents under `.readiness-audit/export/` and never touches audit state.
 - Views/nav: Overview and Findings tabs (per prior work — verify current tab set against code before assuming more exist).
 - Markdown rendering is used for findings, report, and evidence text.
 
@@ -39,5 +39,5 @@ Live progress plus a skimmable, markdown-rendered verdict — the thing a plain 
 1. Legible over exhaustive — surface stage/verdict at a glance before requiring drill-down.
 2. Zero-friction to run — no install step, no auth, no external service; must work the instant the audit starts.
 3. Local-only trust boundary is non-negotiable — never widen beyond `127.0.0.1` or add network egress.
-4. Read-only observer — the dashboard never becomes a control plane for the audit.
+4. Read-only observer — the dashboard never becomes a control plane for the audit. Exporting is the single, narrow exception: it writes derived documents for humans to share, it cannot start, stop, or alter an audit, and no other write is permitted.
 5. Built for a solo dev's terminal-adjacent workflow, not a hosted multi-user product.
