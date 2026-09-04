@@ -100,6 +100,27 @@ repository", "a screenshot of the alert routing" - because those requests are
 themselves the first week of remediation. Never write "there is no monitoring"
 when what you know is that no monitoring appears in this repository.
 
+## Severity factors
+
+Set `exposure` from who is affected when the gap bites. Use `internet` when it
+lets production traffic fail publicly, and `authenticated` for logged-in users
+only. Use `internal` for an operational gap - no IaC, no drift detection -
+that only your own team feels. `local` rarely applies.
+
+Set `data_class` from what is at risk. Use `secrets` for CI or config leaks,
+and `financial` or `pii` when the gap risks losing or exposing that data on
+restore or rollback. Use `business` for other operational data, and `none`
+for a pure availability gap with no data at stake.
+
+Set `blast_radius` from what a failure takes down. Use `systemic` for anything
+that fails for the whole system at once - bad migration sequencing, a broken
+rollback, no alerting. Use `multi-tenant` or narrower only when the gap is
+scoped to part of the fleet.
+
+Set `compensating_control` to `present` only for a control you can point to in
+this repo or in `context.md`. An untested rollback plan or an unmonitored
+dashboard is not a compensating control - it is the finding.
+
 ## Language - write in ASD-STE100
 
 Write every prose field, and every line you report back, in ASD-STE100
@@ -126,6 +147,17 @@ This applies hardest to `impact`, which a non-engineer reads, and to
 `recommendation`, which someone follows as an instruction.
 
 ## Output
+
+Report your progress while you work. At each of five checkpoints, run:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" note <root> devops <phase> "<short note>"
+
+The five checkpoints, in order, are `started`, `evidence-read`, `analyzing`,
+`writing-findings`, and `done`. The note is one short, plain sentence about
+what you do right now - a person reads it on the dashboard. Extra notes
+between checkpoints are welcome; the five above are mandatory. A missing
+heartbeat shows as no signal on the dashboard, not as progress, so skipping
+one makes your run look stalled.
 
 Write `.readiness-audit/findings/devops.json` in the documented JSON shape, IDs `PRA-OPS-001` upward.
 

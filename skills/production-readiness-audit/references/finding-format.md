@@ -21,7 +21,12 @@ generates it from your JSON.
       "title": "Tenant identifier is read from the request body on order writes",
       "impact": "Any logged-in customer can read and change another company's orders by editing one value in the request.",
       "state": "CONFIRMED",
-      "severity": "P0",
+      "factors": {
+        "exposure": "authenticated",
+        "data_class": "financial",
+        "blast_radius": "systemic",
+        "compensating_control": "absent"
+      },
       "owner": "security",
       "cross_lens": ["backend", "database"],
       "evidence": ["src/orders/orders.service.ts:88"],
@@ -44,7 +49,7 @@ generates it from your JSON.
 | `title` | One line naming the problem. Required. |
 | `impact` | **What this costs a non-technical reader.** See below. Required. |
 | `state` | `CONFIRMED`, `NOT_FOUND`, or `UNVERIFIED`. Exactly one. |
-| `severity` | `P0`, `P1`, `P2`, or `P3`. |
+| `factors` | Object with `exposure`, `data_class`, `blast_radius`, `compensating_control`. A script derives `severity` from these four values - see Severity below. Do not set `severity` yourself. |
 | `owner` | Your lens, or the lens that owns it if you are cross-referencing. |
 | `cross_lens` | Array of other lenses this touches. `[]` if none. |
 | `evidence` | Array of `path/to/file.ts:120` strings for CONFIRMED. One entry per location - never a prose sentence. For NOT_FOUND, `["searched, not found in scope"]`. |
@@ -133,23 +138,40 @@ a real `NOT_FOUND`. Follow the ledger rather than your instinct here.
 
 ## Severity
 
-**P0 - production blocker.** A credible, exploitable path to catastrophic
-security compromise, major data loss, financial loss, regulatory exposure, or
-widespread outage, with no adequate compensating control. "Credible" means you
-can write the failure path down concretely - which is why `failure-path` is
-mandatory. If you cannot articulate it, it is not a P0. If a compensating
-control plausibly mitigates it, it is a P1.
+A lens does not choose `P0`-`P3`. It answers four factual questions in
+`factors`, and a script derives the severity from the answers. The same gap
+then gets the same rating on every run, whoever wrote it.
 
-**P1 - serious risk.** High likelihood or high impact against production
-reliability, security, scalability, or operability. Required controls that are
-absent within scope land here. So do implied RPO/RTO violations: nightly-only
-snapshots on a system whose criticality implies a one-hour RPO is a P1 even
-though nothing is technically broken.
+| Factor | Values |
+| --- | --- |
+| `exposure` | `internet`, `authenticated`, `internal`, `local` |
+| `data_class` | `secrets`, `pii`, `financial`, `business`, `none` |
+| `blast_radius` | `systemic`, `multi-tenant`, `single-tenant`, `single-user` |
+| `compensating_control` | `present`, `absent` |
 
-**P2/P3 - technical debt.** Shortcuts, TODOs, maintainability. No ego, no noise.
-If it would not change a decision, leave it out.
+The script scores each answer, sums the three factors, then subtracts for a
+present compensating control and floors the result at zero:
 
-Uncertainty never raises severity. A compensating control always lowers it.
+    exposure:        internet 3, authenticated 2, internal 1, local 0
+    data_class:      secrets 3, pii 3, financial 3, business 1, none 0
+    blast_radius:    systemic 3, multi-tenant 2, single-tenant 1, single-user 0
+    compensating_control present: subtract 2, total floored at 0
+
+    total >= 8   -> P0
+    total 6-7    -> P1
+    total 3-5    -> P2
+    total <= 2   -> P3
+
+An `UNVERIFIED` finding is never `P0`. Its rubric result is capped at `P1`,
+whatever the total.
+
+A finding that sets `severity` itself, instead of `factors`, is rejected by
+the validator. Answer the four questions honestly - do not pick values to
+land on a severity you already had in mind.
+
+`failure_path` and `compensating` are required whenever the factors score
+`P0`: write the concrete path to harm, and name the mitigating control or
+state `"none found"`.
 
 ## Proportionality
 

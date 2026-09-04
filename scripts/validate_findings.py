@@ -13,6 +13,10 @@ It enforces the rules that are easy to state and easy to quietly break:
     (or states there is none)
   * absence is phrased as "not found in reviewed scope", never as "does not exist"
   * the same finding does not appear under two lenses
+  * severity is never hand-set; a finding supplies `factors` and severity is
+    derived from the published rubric (see severity.py)
+  * a verdict.json decision, if present, must agree with the decision computed
+    from the validated findings
 
 Errors block the report. Warnings are judgement calls worth a second look.
 
@@ -24,6 +28,10 @@ import json
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from severity import compute_severity, validate_factors  # noqa: E402
+from finding_store import FINDING_SCHEMA, compute_decision, load_verdict  # noqa: E402
 
 STATES = {"CONFIRMED", "NOT_FOUND", "UNVERIFIED"}
 SEVERITIES = {"P0", "P1", "P2", "P3"}
@@ -50,7 +58,7 @@ CODE_SHAPED = re.compile(r"`[^`]+`|[\w-]+/[\w./-]+|\b\w+\.(?:ts|tsx|js|jsx|py|go
 # The authored JSON uses snake_case; the rules below were written against the
 # markdown field names. Mapping once here keeps every rule untouched.
 JSON_TO_FIELD = {
-    "state": "state", "severity": "severity", "owner": "owner",
+    "state": "state", "owner": "owner",
     "cross_lens": "cross-lens", "evidence": "evidence", "probe": "probe",
     "impact": "impact", "failure_path": "failure-path",
     "compensating": "compensating", "fix": "fix", "resolve": "resolve", "see": "see",
@@ -74,6 +82,15 @@ def parse_file(path: Path):
     if not isinstance(raw, dict) or not isinstance(raw.get("findings", []), list):
         raise ValueError(f"{path.name} must be an object with a 'findings' list")
 
+    schema = raw.get("schema")
+    if schema != FINDING_SCHEMA:
+        raise ValueError(
+            f"{path.name} declares schema {schema!r}, expected {FINDING_SCHEMA} "
+            "(severity is now derived from factors, not authored). Re-run this "
+            "lens to regenerate the file in the current schema, or archive the "
+            "old audit before starting a new one."
+        )
+
     findings = []
     for index, item in enumerate(raw.get("findings", []), 1):
         if not isinstance(item, dict):
@@ -90,12 +107,32 @@ def parse_file(path: Path):
             "_line": index,
             "_file": path.name,
             "fields": fields,
+            # kept raw (not stringified through `fields`) so factor values
+            # are matched against the rubric's enums exactly as authored
+            "factors": item.get("factors"),
+            "severity_provided": item.get("severity") not in (None, "", "-"),
         })
     return findings
 
 
 def empty(v):
     return v is None or v.strip() in ("", "-", "n/a", "N/A", "none")
+
+
+def derive_severity(fd: dict) -> str:
+    """Severity for one finding as parsed by `parse_file`.
+
+    Mirrors the derivation `validate()` performs per finding, for callers
+    (assemble_report.py) that need a severity string without re-running the
+    full validation pass. Returns "?" if factors are missing or invalid,
+    rather than raising, since a caller reaching this point has typically
+    already run `validate()` and decided how to handle its errors (including,
+    with --force, choosing to render anyway).
+    """
+    state = fd["fields"].get("state", "").strip().upper().replace(" ", "_")
+    if validate_factors(fd.get("factors")):
+        return "?"
+    return compute_severity(fd["factors"], state)
 
 
 def validate(root: Path):
@@ -153,9 +190,18 @@ def validate(root: Path):
         state = F.get("state", "").strip().upper().replace(" ", "_")
         if state not in STATES:
             err(f"state must be one of {sorted(STATES)}, got {F.get('state')!r}")
-        sev = F.get("severity", "").strip().upper()
-        if sev not in SEVERITIES:
-            err(f"severity must be one of {sorted(SEVERITIES)}, got {F.get('severity')!r}")
+
+        # Severity is derived, never authored. A finding that sets it by hand
+        # is trying to make the report's highest-stakes judgement itself.
+        if fd.get("severity_provided"):
+            err("severity must not be set directly; remove it and supply "
+                "factors instead, so severity is derived from the rubric")
+
+        factor_errors = validate_factors(fd.get("factors"))
+        for msg in factor_errors:
+            err(msg)
+        sev = "" if factor_errors else compute_severity(fd["factors"], state)
+        F["severity"] = sev or "?"
 
         if empty(F.get("fix")):
             err("no fix given; a finding without a concrete remediation is an observation, not a finding")
@@ -257,6 +303,25 @@ def validate(root: Path):
                                ", ".join(ids),
                                f"same underlying issue ({fp}) reported by {sorted(lenses)}; "
                                "one lens owns it fully, the others add see: <owner-id>"))
+
+    # decision cross-check: the go/no-go call is computed from severities,
+    # never authored by hand. If verdict.json states one anyway, it must
+    # agree - a disagreement is a validation error, never a silent override.
+    if all_findings:
+        computed_decision = compute_decision(
+            [{"severity": fd["fields"].get("severity", "")} for fd in all_findings]
+        )
+        verdict, _ = load_verdict(root)
+        authored_decision = verdict.get("decision")
+        if authored_decision and authored_decision != computed_decision:
+            errors.append((
+                "verdict.json", "-",
+                f"verdict.json declares decision {authored_decision!r} but the "
+                f"findings compute to {computed_decision!r} (any P0 is HOLD, "
+                "P1s with no P0 are FIX_THEN_SHIP, otherwise SHIP); the decision "
+                "is computed from findings and cannot be overridden - fix the "
+                "findings or fix verdict.json"
+            ))
 
     stats = {
         "total": len(all_findings),

@@ -22,7 +22,19 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from severity import FactorError, compute_severity, validate_factors  # noqa: E402
+
 SCHEMA = 1
+
+# The schema of one findings/<lens>.json file, authored by a lens. Bumped from
+# 1 because severity is no longer an authored field: a lens now supplies
+# `factors` and this module derives severity from them. There is deliberately
+# no shim that reads a schema-1 file - inferring factors from a previously
+# authored severity would fabricate evidence-grade data, which is exactly the
+# failure derived severity exists to prevent. An old file must be re-run or
+# archived, not silently reinterpreted.
+FINDING_SCHEMA = 2
 
 STATES = {"CONFIRMED", "NOT_FOUND", "UNVERIFIED"}
 SEVERITIES = {"P0", "P1", "P2", "P3"}
@@ -76,11 +88,26 @@ def normalise_finding(raw: dict, lens: str) -> dict:
     if state not in STATES:
         raise FindingError(f"{fid}: state must be one of {sorted(STATES)}, got {state or 'nothing'}")
 
-    severity = (_text(raw.get("severity")) or "").upper()
-    if severity not in SEVERITIES:
-        raise FindingError(f"{fid}: severity must be one of {sorted(SEVERITIES)}, got {severity or 'nothing'}")
+    # Severity is derived, never authored. A lens that still sets it is
+    # trying to make the highest-stakes judgement in the report by hand.
+    if _text(raw.get("severity")) is not None:
+        raise FindingError(
+            f"{fid}: severity must not be set directly; remove it and supply "
+            "factors instead, so severity is derived from the rubric"
+        )
+
+    factors = raw.get("factors")
+    factor_errors = validate_factors(factors)
+    if factor_errors:
+        raise FindingError(f"{fid}: " + "; ".join(factor_errors))
+
+    try:
+        severity = compute_severity(factors, state)
+    except FactorError as exc:
+        raise FindingError(f"{fid}: {exc}") from exc
 
     finding = {"id": fid, "state": state, "severity": severity,
+               "factors": dict(factors),
                "owner": _text(raw.get("owner")) or lens, "lens": lens}
     for key in TEXT_FIELDS:
         finding[key] = _text(raw.get(key))
@@ -110,6 +137,16 @@ def load_lens(path: Path) -> list[dict]:
         raw = {"findings": raw}
     if not isinstance(raw, dict):
         raise FindingError(f"{lens}: {path.name} must contain an object or a list")
+
+    schema = raw.get("schema")
+    if schema != FINDING_SCHEMA:
+        raise FindingError(
+            f"{lens}: {path.name} declares schema {schema!r}, expected "
+            f"{FINDING_SCHEMA} (findings now carry derived-severity factors "
+            "instead of an authored severity). Re-run this lens to regenerate "
+            "the file in the current schema, or archive the old audit before "
+            "starting a new one."
+        )
 
     findings = raw.get("findings", [])
     if not isinstance(findings, list):
@@ -213,6 +250,22 @@ def load_verdict(root: Path) -> tuple[dict, list[str]]:
     }, errors
 
 
+def compute_decision(findings: list[dict]) -> str:
+    """The go/no-go call, as a pure function of severities: any P0 is HOLD,
+    P1s with no P0 are FIX_THEN_SHIP, otherwise SHIP.
+
+    This is the rule SKILL.md always described as mechanical. It used to be
+    applied by the model when it authored verdict.json by hand; it is now
+    computed here so the same findings always produce the same decision.
+    """
+    severities = {f.get("severity") for f in findings}
+    if "P0" in severities:
+        return "HOLD"
+    if "P1" in severities:
+        return "FIX_THEN_SHIP"
+    return "SHIP"
+
+
 def _counts(findings: list[dict]) -> dict:
     counts = {"total": len(findings), "p0": 0, "p1": 0, "p2": 0, "p3": 0,
               "confirmed": 0, "notFound": 0, "unverified": 0}
@@ -251,6 +304,20 @@ def build_report(root: Path) -> dict:
 
     verdict, verdict_errors = load_verdict(root)
     errors.extend(verdict_errors)
+
+    # The decision the dashboard shows is computed from the findings, never the
+    # one the model typed. It appears only once the audit has finished and
+    # written its verdict, so a half-finished run reads as pending rather than
+    # claiming SHIP because nothing has been found yet.
+    if (state.get("stage_status") == "complete"
+            and (root / ".readiness-audit" / "verdict.json").exists()):
+        computed = compute_decision(findings)
+        authored = verdict.get("decision")
+        if authored and authored != computed:
+            errors.append(
+                f"verdict.json decision {authored} disagrees with the findings, "
+                f"which give {computed}")
+        verdict = {**verdict, "decision": computed}
 
     lenses_with_findings = {f["lens"] for f in findings}
     by_lens = {lens: [f for f in findings if f["lens"] == lens] for lens in LENS_ORDER}

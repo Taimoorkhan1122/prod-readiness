@@ -22,8 +22,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from validate_findings import parse_file, validate, LENS_PREFIX  # noqa: E402
-from finding_store import load_verdict, write_report  # noqa: E402
+from validate_findings import parse_file, validate, derive_severity, LENS_PREFIX  # noqa: E402
+from finding_store import compute_decision, load_verdict, write_report  # noqa: E402
 
 DECISION_TEXT = {
     "SHIP": "SHIP",
@@ -62,6 +62,9 @@ def load_findings(root: Path):
             continue  # validate_findings.py reports this; the gate above blocks on it
         for fd in parsed:
             fd["lens_file"] = f.stem
+            # parse_file() no longer carries an authored severity - it is
+            # derived from factors, same as validate() derives it.
+            fd["fields"]["severity"] = derive_severity(fd)
             out.append(fd)
     return out
 
@@ -171,18 +174,33 @@ def main():
     verdict, verdict_errors = load_verdict(root)
     for message in verdict_errors:
         print(message, file=sys.stderr)
-    if verdict["decision"] or verdict["headline"]:
-        A(f"**{DECISION_TEXT.get(verdict['decision'], verdict['decision'] or 'VERDICT')}**")
-        A("")
+
+    # decision is computed from the findings, never taken on the model's
+    # say-so. validate_findings.py already blocks assembly (absent --force)
+    # if verdict.json asserted a decision that disagrees with this one, so
+    # reaching this line means either they agree or --force was passed.
+    computed_decision = compute_decision([{"severity": sev(f)} for f in findings])
+    if verdict["decision"] and verdict["decision"] != computed_decision:
+        print(
+            f"verdict.json declares decision {verdict['decision']!r} but the "
+            f"findings compute to {computed_decision!r}; using the computed "
+            "decision because --force was passed. Fix the findings or "
+            "verdict.json to clear this properly.",
+            file=sys.stderr,
+        )
+
+    A(f"**{DECISION_TEXT.get(computed_decision, computed_decision)}**")
+    A("")
+    if verdict["headline"] or verdict["summary"]:
         for paragraph in (verdict["headline"], verdict["summary"]):
             if paragraph:
                 A(paragraph)
                 A("")
     else:
-        A("<!-- FILL: write .readiness-audit/verdict.json with a decision of SHIP / "
-          "FIX_THEN_SHIP / HOLD, a headline, and a summary. State explicitly how much "
-          f"of the verdict rests on UNVERIFIED areas - there are {len(unverified)} "
-          "unverified findings. This section is generated from that file. -->")
+        A("<!-- FILL: write .readiness-audit/verdict.json with a headline and a "
+          "summary (no decision - that is computed above from the findings). "
+          "State explicitly how much of the verdict rests on UNVERIFIED areas - "
+          f"there are {len(unverified)} unverified findings. -->")
         A("")
 
     # ---- C / D ----

@@ -23,6 +23,15 @@ scope**, cite the probes you checked, and return. Do not invent risks for a
 system that has no model in it. A fabricated AI section is the fastest way to
 make a reader stop trusting the other six lenses.
 
+Report a heartbeat on this path too, before you return:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" note <root> ai-security done "No model integration found in reviewed scope."
+```
+
+A lens that exits early and says nothing looks stalled to the person watching
+the dashboard.
+
 If there is signal, continue.
 
 ## Read before you look at any source
@@ -106,6 +115,28 @@ rejected in `.readiness-audit/deferred.md` with its trigger.
 Provider-side controls you cannot see - rate limits configured in the vendor
 console, spend caps - are `UNVERIFIED` with a `resolve` field.
 
+## Severity factors
+
+Set `exposure` from who can reach the model: `internet` for an unauthenticated
+endpoint, `authenticated` for one behind login, `internal` for an
+internal-only tool. `local` rarely applies.
+
+Set `data_class` from what the model can read or leak. Use `secrets` for
+credentials in the system prompt or context, and `pii` for personal data in
+context. Use `financial` where the model handles money, `business` for other
+proprietary data, and `none` for a pure availability or cost issue.
+
+Set `blast_radius` from what the model can do once compromised. Use `systemic`
+when a tool call runs under a service account that reaches every tenant's
+data, and `multi-tenant` when it can cross tenant boundaries some other way.
+Use `single-tenant` or `single-user` when the model acts only within the
+requesting user's own permissions.
+
+Set `compensating_control` to `present` only for a real gate on the
+consequential action - a human-in-the-loop approval, a scoped token. A system
+prompt instruction telling the model to behave does not count; a prompt
+injection defeats it by design.
+
 ## Language - write in ASD-STE100
 
 Write every prose field, and every line you report back, in ASD-STE100
@@ -132,6 +163,17 @@ This applies hardest to `impact`, which a non-engineer reads, and to
 `recommendation`, which someone follows as an instruction.
 
 ## Output
+
+Report your progress while you work. At each of five checkpoints, run:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" note <root> ai-security <phase> "<short note>"
+
+The five checkpoints, in order, are `started`, `evidence-read`, `analyzing`,
+`writing-findings`, and `done`. The note is one short, plain sentence about
+what you do right now - a person reads it on the dashboard. Extra notes
+between checkpoints are welcome; the five above are mandatory. A missing
+heartbeat shows as no signal on the dashboard, not as progress, so skipping
+one makes your run look stalled.
 
 Write `.readiness-audit/findings/ai-security.json` in the documented JSON shape, IDs `PRA-AI-001`
 

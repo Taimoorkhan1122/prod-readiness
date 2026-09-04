@@ -94,6 +94,23 @@ tests found in reviewed scope". Whether the suite passes, how long it takes, and
 what the real coverage percentage is are all `UNVERIFIED` unless a report is
 checked in - say so rather than estimating.
 
+## Severity factors
+
+A missing test has no exposure or data class of its own - it inherits the
+factors of the path it fails to cover. Rate a coverage gap by what would go
+wrong in production if that path breaks unnoticed, not by anything about the
+test suite itself.
+
+Set `exposure`, `data_class`, and `blast_radius` from the underlying flow. An
+uncovered payment path is `authenticated` or `internet`, `financial`, and
+whatever tenant scope the flow touches. An uncovered internal admin script
+scores lower on all three.
+
+Set `compensating_control` to `absent` for almost every finding here - the gap
+you report is the absence of the control. Use `present` only when a different
+test, manual process, or monitor would actually catch the regression before it
+reaches a user.
+
 ## Language - write in ASD-STE100
 
 Write every prose field, and every line you report back, in ASD-STE100
@@ -120,6 +137,17 @@ This applies hardest to `impact`, which a non-engineer reads, and to
 `recommendation`, which someone follows as an instruction.
 
 ## Output
+
+Report your progress while you work. At each of five checkpoints, run:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" note <root> qa <phase> "<short note>"
+
+The five checkpoints, in order, are `started`, `evidence-read`, `analyzing`,
+`writing-findings`, and `done`. The note is one short, plain sentence about
+what you do right now - a person reads it on the dashboard. Extra notes
+between checkpoints are welcome; the five above are mandatory. A missing
+heartbeat shows as no signal on the dashboard, not as progress, so skipping
+one makes your run look stalled.
 
 Write `.readiness-audit/findings/qa.json` in the documented JSON shape, IDs `PRA-QA-001` upward.
 
