@@ -1,6 +1,6 @@
 {
   "name": "prod-readiness",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Seven-lens production readiness audit. An orchestrator skill runs one evidence pass, then dispatches seven read-only specialist agents (security, backend, frontend, devops, qa, database, ai-security) over that same evidence body, with mechanical enforcement of the CONFIRMED / NOT FOUND / UNVERIFIED distinction.",
   "author": {
     "name": "Taimoor"
