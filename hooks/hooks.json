@@ -1,5 +1,5 @@
 {
-  "description": "Routes production-readiness requests into the staged audit workflow.",
+  "description": "Routes production-readiness requests into the staged audit workflow and starts the dashboard when an audit begins.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -7,6 +7,17 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/route_readiness_prompt.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/launch_dashboard_hook.py\""
           }
         ]
       }

@@ -115,6 +115,27 @@ applies. Write those as risks with a precise `resolve` field - "the managed
 database's backup and PITR settings, and any record of a restore test" - never
 as established absence.
 
+## Severity factors
+
+Set `exposure` from how the gap is reached, not from whether the database
+itself faces the internet. Use `authenticated` when application users trigger
+the loss through a bug or a bad write. Use `internal` when only an operator
+action - a migration, a restore - triggers it. Use `internet` only if the
+database is directly reachable. `local` rarely applies.
+
+Set `data_class` from what the affected rows contain: `secrets`, `pii`,
+`financial`, `business`, or `none`. Read the schema for the actual columns
+rather than assuming from the table name.
+
+Set `blast_radius` from what the gap threatens. Use `systemic` for anything
+that threatens the whole dataset - no PITR, no verified restore, a destructive
+migration with no expand-contract path. Use `multi-tenant` or `single-tenant`
+for a schema or query bug scoped to specific rows.
+
+Set `compensating_control` to `present` only for a control that actually
+bounds data loss for this specific gap. A nightly snapshot does not
+compensate for the absence of PITR when the stated RPO is one hour.
+
 ## Language - write in ASD-STE100
 
 Write every prose field, and every line you report back, in ASD-STE100
@@ -141,6 +162,17 @@ This applies hardest to `impact`, which a non-engineer reads, and to
 `recommendation`, which someone follows as an instruction.
 
 ## Output
+
+Report your progress while you work. At each of five checkpoints, run:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" note <root> database <phase> "<short note>"
+
+The five checkpoints, in order, are `started`, `evidence-read`, `analyzing`,
+`writing-findings`, and `done`. The note is one short, plain sentence about
+what you do right now - a person reads it on the dashboard. Extra notes
+between checkpoints are welcome; the five above are mandatory. A missing
+heartbeat shows as no signal on the dashboard, not as progress, so skipping
+one makes your run look stalled.
 
 Write `.readiness-audit/findings/database.json` in the documented JSON shape, IDs `PRA-DB-001`
 

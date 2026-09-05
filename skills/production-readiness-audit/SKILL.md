@@ -93,21 +93,33 @@ to act on later.
 ### Dashboard - always start it, do not ask
 
 Immediately after `audit_state.py init` succeeds (or the user confirms a state
-resume), start the dashboard yourself as a managed background Bash task. This
-is a default step of every audit run, not something the user opts into or
-requests:
+resume), start the dashboard. This is a default step of every audit run, not
+something the user opts into or requests:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/readiness_dashboard.py" <root>
 ```
 
-Wait only for the printed URL line or an immediate error. Best-effort open the
-URL, report it to the user, and continue immediately to Stage 1.
+The command starts a detached server, waits for it to answer, prints its URL,
+and exits. It does not block, so run it as an ordinary foreground command - a
+managed background Bash task is no longer needed. It opens a browser itself
+where one is available. Report the URL to the user and continue immediately to
+Stage 1.
 
-If dashboard launch fails, tell the user it is unavailable and continue the audit
-anyway - launch failure is non-fatal and never blocks the audit. Do not wait for
-the dashboard process, use it as an audit agent, or change the selected
-parallel/sequential execution mode.
+The command is idempotent. A dashboard already serving this audit is reused
+rather than replaced, so running it twice is safe. A `PostToolUse` hook runs the
+same launcher when the audit state is written, which means the dashboard usually
+exists before you ask for it; the reuse rule makes that harmless.
+
+Exit code 0 means a dashboard is serving and the last line of output is its URL.
+Any other exit code means the dashboard is unavailable: tell the user, point at
+`.readiness-audit/dashboard.log`, and continue the audit anyway - launch failure
+is non-fatal and never blocks the audit. Do not use the dashboard as an audit
+agent, and do not change the selected parallel/sequential execution mode.
+
+The server outlives this session so that a reviewer can read the report after
+the audit ends. It closes itself after an hour with no reader, and
+`readiness_dashboard.py <root> --stop` closes it immediately.
 
 Offer to add `.readiness-audit/` to `.gitignore`.
 
@@ -195,17 +207,21 @@ Write the verdict first, as data, to `.readiness-audit/verdict.json`:
 
 ```json
 {
-  "decision": "HOLD",
   "headline": "Six confirmed blockers make this unsafe to deploy.",
   "summary": "Two are trivially exploitable from a browser... State here how much of this call rests on what you could not see."
 }
 ```
 
-`decision` is `SHIP`, `FIX_THEN_SHIP`, or `HOLD`. The rule is mechanical - any P0
-is HOLD, P1s alone are FIX THEN SHIP, neither is SHIP - but the sentence that
-matters most is the one in `summary` saying how much of the verdict rests on
-things you could not see. `headline` is one sentence a non-engineer reads first;
-it is the largest text on the dashboard.
+You write the prose. You do not write the decision: `SHIP`, `FIX_THEN_SHIP`, or
+`HOLD` is computed from the validated findings, because the rule is pure
+arithmetic - any P0 is HOLD, P1s alone are FIX THEN SHIP, neither is SHIP - and
+a counting rule applied by hand is a counting rule that eventually comes out
+different. A `decision` field that disagrees with the findings is a validation
+error, so leave it out.
+
+The sentence that matters most is the one in `summary` saying how much of the
+verdict rests on things you could not see. `headline` is one sentence a
+non-engineer reads first; it is the largest text on the dashboard.
 
 Then assemble:
 

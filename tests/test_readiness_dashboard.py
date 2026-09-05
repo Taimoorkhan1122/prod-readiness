@@ -5,22 +5,40 @@ import threading
 import unittest
 from pathlib import Path
 
+from scripts.finding_store import FINDING_SCHEMA
 from scripts.readiness_dashboard import DASHBOARD_HTML, build_snapshot, create_server, startup_url
 
 
 def write_findings(audit, lens, findings):
     (audit / "findings").mkdir(parents=True, exist_ok=True)
     (audit / "findings" / f"{lens}.json").write_text(
-        json.dumps({"schema": 1, "lens": lens, "findings": findings}), encoding="utf-8")
+        json.dumps({"schema": FINDING_SCHEMA, "lens": lens, "findings": findings}),
+        encoding="utf-8")
+
+
+# A lens supplies factors, not a severity. These sets are chosen so the rubric
+# in severity.py produces each band, which keeps the tests readable: they still
+# say "give me a P0" while exercising the real derivation.
+FACTORS_FOR_SEVERITY = {
+    "P0": {"exposure": "internet", "data_class": "secrets",
+           "blast_radius": "systemic", "compensating_control": "absent"},
+    "P1": {"exposure": "internet", "data_class": "business",
+           "blast_radius": "multi-tenant", "compensating_control": "absent"},
+    "P2": {"exposure": "internal", "data_class": "business",
+           "blast_radius": "single-tenant", "compensating_control": "absent"},
+    "P3": {"exposure": "local", "data_class": "none",
+           "blast_radius": "single-user", "compensating_control": "absent"},
+}
 
 
 def finding(**overrides):
+    severity = overrides.pop("severity", "P0")
     base = {
         "id": "PRA-SEC-001",
         "title": "Tenant id is read from the request body",
         "impact": "Any logged-in customer can read another company's orders.",
         "state": "CONFIRMED",
-        "severity": "P0",
+        "factors": dict(FACTORS_FOR_SEVERITY[severity]),
         "evidence": ["src/orders/orders.service.ts:88"],
         "failure_path": "The controller trusts a client-supplied tenant id.",
         "compensating": "none found",
@@ -148,20 +166,43 @@ class SnapshotTests(unittest.TestCase):
 
         self.assertEqual(ids, ["PRA-SEC-002", "PRA-SEC-005", "PRA-SEC-009"])
 
-    def test_verdict_is_read_from_data_not_from_prose(self):
+    def test_verdict_prose_is_authored_but_the_decision_is_computed(self):
         root = self._root()
         audit = root / ".readiness-audit"
         self._write_state(audit, stage_status="complete")
         (audit / "report.md").write_text("## Executive Verdict\n\n**SHIP**\n", encoding="utf-8")
+        write_findings(audit, "security", [finding(severity="P0")])
         (audit / "verdict.json").write_text(json.dumps({
             "decision": "HOLD",
             "headline": "Two blockers make this unsafe to deploy.",
         }), encoding="utf-8")
 
-        verdict = build_snapshot(root)["verdict"]
+        snapshot = build_snapshot(root)
 
-        self.assertEqual(verdict["decision"], "HOLD")
-        self.assertEqual(verdict["headline"], "Two blockers make this unsafe to deploy.")
+        self.assertEqual(snapshot["verdict"]["decision"], "HOLD")
+        self.assertEqual(snapshot["verdict"]["headline"],
+                         "Two blockers make this unsafe to deploy.")
+        self.assertEqual(snapshot["errors"], [])
+
+    def test_an_authored_decision_that_disagrees_with_the_findings_is_reported(self):
+        root = self._root()
+        audit = root / ".readiness-audit"
+        self._write_state(audit, stage_status="complete")
+        write_findings(audit, "security", [finding(severity="P0")])
+        (audit / "verdict.json").write_text(json.dumps({"decision": "SHIP"}), encoding="utf-8")
+
+        snapshot = build_snapshot(root)
+
+        self.assertEqual(snapshot["verdict"]["decision"], "HOLD")
+        self.assertTrue(any("disagrees with the findings" in e for e in snapshot["errors"]))
+
+    def test_a_running_audit_shows_no_decision_at_all(self):
+        root = self._root()
+        audit = root / ".readiness-audit"
+        self._write_state(audit)
+        write_findings(audit, "security", [finding(severity="P2")])
+
+        self.assertIsNone(build_snapshot(root)["verdict"]["decision"])
 
     def test_unknown_verdict_decision_is_reported_not_guessed(self):
         root = self._root()

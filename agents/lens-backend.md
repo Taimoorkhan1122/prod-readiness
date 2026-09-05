@@ -112,6 +112,27 @@ would resolve it. Resist stating that something has no timeout when what you
 actually know is that no timeout appears in the code you read; if a client
 default might supply one, that is UNVERIFIED with a note about which client.
 
+## Severity factors
+
+Set `exposure` from who can trigger the failure: `internet` for a
+public-facing endpoint, `authenticated` for one that needs a session,
+`internal` for a service-to-service call behind the network boundary, `local`
+for background work with no external trigger.
+
+Set `data_class` from what a failure loses or corrupts: `financial` for
+payments, `pii` for personal data, `business` for orders, inventory, or other
+operational state, `none` for a failure with no data consequence.
+
+Set `blast_radius` from how far the failure spreads. Use `systemic` when a
+shared resource - a connection pool, a cache, a broker - fails for every
+tenant at once. Use `multi-tenant` when it crosses tenants without being
+system-wide, and `single-tenant` or `single-user` when it stays scoped to one
+caller.
+
+Set `compensating_control` to `present` only when a retry, timeout, circuit
+breaker, or fallback actually bounds the damage from this specific failure,
+not because one exists somewhere else in the system.
+
 ## Language - write in ASD-STE100
 
 Write every prose field, and every line you report back, in ASD-STE100
@@ -138,6 +159,17 @@ This applies hardest to `impact`, which a non-engineer reads, and to
 `recommendation`, which someone follows as an instruction.
 
 ## Output
+
+Report your progress while you work. At each of five checkpoints, run:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" note <root> backend <phase> "<short note>"
+
+The five checkpoints, in order, are `started`, `evidence-read`, `analyzing`,
+`writing-findings`, and `done`. The note is one short, plain sentence about
+what you do right now - a person reads it on the dashboard. Extra notes
+between checkpoints are welcome; the five above are mandatory. A missing
+heartbeat shows as no signal on the dashboard, not as progress, so skipping
+one makes your run look stalled.
 
 Write `.readiness-audit/findings/backend.json` in the documented JSON shape, IDs `PRA-BE-001` upward.
 

@@ -95,6 +95,26 @@ behaviour, actual render performance, whether a screen reader can complete the
 signup flow - cannot be determined from source. That is `UNVERIFIED` with a
 `resolve` field, not a guess dressed up as a finding.
 
+## Severity factors
+
+Set `exposure` from who reaches the affected surface: `internet` for a public
+page, `authenticated` for one behind login, `internal` for an admin panel
+gated by network or role, `local` only for a dev-only surface.
+
+Set `data_class` from what the gap exposes. Use `secrets` for tokens or API
+keys in the client, and `pii` for personal data rendered or stored in the
+browser. Use `financial` for payment data, `business` for other product data,
+and `none` for a pure UX defect with no data at stake.
+
+Set `blast_radius` almost always to `single-user` - most frontend defects sit
+inside one person's session. Use `multi-tenant` or `systemic` only when the
+bug itself leaks another account's data into the current session, or breaks
+the app for every user at once, such as a bundle that fails to load.
+
+Set `compensating_control` to `present` only when server-side validation or
+rendering already blocks the same failure. A client-only check never counts,
+since the server is the boundary that matters.
+
 ## Language - write in ASD-STE100
 
 Write every prose field, and every line you report back, in ASD-STE100
@@ -121,6 +141,17 @@ This applies hardest to `impact`, which a non-engineer reads, and to
 `recommendation`, which someone follows as an instruction.
 
 ## Output
+
+Report your progress while you work. At each of five checkpoints, run:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" note <root> frontend <phase> "<short note>"
+
+The five checkpoints, in order, are `started`, `evidence-read`, `analyzing`,
+`writing-findings`, and `done`. The note is one short, plain sentence about
+what you do right now - a person reads it on the dashboard. Extra notes
+between checkpoints are welcome; the five above are mandatory. A missing
+heartbeat shows as no signal on the dashboard, not as progress, so skipping
+one makes your run look stalled.
 
 Write `.readiness-audit/findings/frontend.json` in the documented JSON shape, IDs `PRA-FE-001`
 

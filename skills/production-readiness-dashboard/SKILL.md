@@ -19,6 +19,16 @@ path:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/readiness_dashboard.py" <target-project-root>
 ```
 
-The server prints a local URL such as `http://127.0.0.1:<port>/`. Open that URL
-if the browser does not open automatically. Press Ctrl-C to stop a manually
-launched server.
+The command prints a local URL such as `http://127.0.0.1:<port>/` and exits. It
+opens that URL in a browser where one is available; open it yourself if not.
+
+The server runs detached, so it stays up after the session that started it and
+Ctrl-C does not reach it. It closes after an hour with no reader. To close it
+now:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/readiness_dashboard.py" <target-project-root> --stop
+```
+
+Running the command again while a dashboard is already serving that project
+reuses the running server instead of starting a second one.

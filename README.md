@@ -94,10 +94,10 @@ each specialist's work one step at a time.
 
 ### Watch an audit in your browser (optional)
 
-After Claude successfully initializes a new audit or confirms a resume, it
-automatically starts a read-only dashboard in the background and continues the
-audit. The dashboard is local-only and listens on `127.0.0.1`; if it cannot
-start, the audit proceeds normally.
+When a new audit is initialized or a resume is confirmed, a read-only dashboard
+starts automatically and the audit continues. The dashboard is local-only and
+listens on `127.0.0.1`; if it cannot start, the audit proceeds normally and the
+reason is written to `.readiness-audit/dashboard.log`.
 
 To start it manually, run this in Claude Code:
 
@@ -105,9 +105,52 @@ To start it manually, run this in Claude Code:
 /prod-readiness:production-readiness-dashboard
 ```
 
-The dashboard prints an address such as `http://127.0.0.1:<port>/`. Open that
-URL if your browser does not open automatically. Press Ctrl-C to stop a
-manually launched dashboard.
+The dashboard prints an address such as `http://127.0.0.1:<port>/` and opens it
+in your browser where it can. Starting it again while it is already running
+reuses the same server rather than starting a second one.
+
+The server is detached, so it keeps serving the finished report after the Claude
+Code session ends and Ctrl-C does not reach it. It closes itself after an hour
+with no reader, or immediately with:
+
+```bash
+python3 scripts/readiness_dashboard.py <project-root> --stop
+```
+
+### Watch what each specialist is doing
+
+While the audit runs, every lens reports its own progress at five checkpoints:
+starting, reading evidence, analyzing, writing findings, and finished. The
+Overview shows each specialist's current phase and how long ago it reported,
+with an activity feed of what they said.
+
+A specialist that has reported nothing recently is shown as **no signal**. It is
+never shown as progress: a live view that invents activity is worse than one
+that admits it does not know.
+
+### Export a report to share
+
+The dashboard's **Export report** button, or:
+
+```bash
+python3 scripts/export_report.py <project-root>
+```
+
+writes a shareable document set to `.readiness-audit/export/<git-ref>-<time>/`:
+
+- `report.tex` — the full audit: verdict, context, scope, evidence summary, all
+  seven lens sections, and an appendix of everything that could not be verified.
+- `report-<lens>.tex` — one document per specialist, so a security engineer gets
+  a report without the frontend findings and the other way round.
+- `report.md` — the plain-markdown trail, for anyone without a TeX toolchain.
+- `report.pdf` — only when `tectonic` or `pdflatex` is installed. Without one,
+  the `.tex` files are still written and the command tells you how to compile
+  them.
+
+Each export gets its own directory and nothing is ever overwritten, so "which
+version did they read" always has an answer. Exporting a running audit is
+allowed; the front page then carries a banner naming the stage it reached and
+the lenses that have not reported yet.
 
 It opens on the decision, not the evidence: the verdict, how many findings block
 the release, and the handful that need attention first. Each finding leads with
