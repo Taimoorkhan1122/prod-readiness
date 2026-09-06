@@ -1,5 +1,5 @@
 {
-  "description": "Routes production-readiness requests into the staged audit workflow and starts the dashboard when an audit begins.",
+  "description": "Routes production-readiness requests into the staged audit workflow, starts the dashboard when an audit begins, and reports at session start when a newer plugin release is available.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -18,6 +18,16 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/launch_dashboard_hook.py\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/check_update.py\""
           }
         ]
       }

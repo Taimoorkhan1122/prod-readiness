@@ -196,6 +196,23 @@ claude plugin list --json
 
 Use `@` directly in these commands. You do not need to type `\@`.
 
+### Update notices
+
+At the start of a session, the plugin compares its installed version against
+the `main` branch of
+[the upstream repository](https://github.com/Taimoorkhan1122/prod-readiness)
+and tells Claude when a newer release exists. Claude Code cannot swap a plugin
+out of a running session, so the notice is informational: update with
+`claude plugin update prod-readiness` and restart to apply it.
+
+The check runs at most once every 24 hours (the result is cached under
+`~/.cache/prod-readiness/update-check.json`), times out after 2 seconds, and
+fails silently — it never blocks or slows a session. To turn it off, set:
+
+```bash
+export PROD_READINESS_NO_UPDATE_CHECK=1
+```
+
 ## Use it on a project
 
 1. Open Claude Code in the folder for the app or website you want to check.
@@ -410,4 +427,5 @@ scripts/
   absence_probe.py
   validate_findings.py
   assemble_report.py
+  check_update.py
 ```
