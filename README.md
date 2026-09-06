@@ -167,32 +167,47 @@ what already protects you, how to fix it, and the exact file locations](assets/s
 
 ### Update or fix the installation
 
-The **marketplace** and the **plugin** are separate. Adding the marketplace
-does not install the plugin. To install or refresh `prod-readiness` for all of
-your projects, run these commands in Terminal:
+The **marketplace** and the **plugin** are separate. Updating the marketplace does not install or update an already-installed plugin.
+
+First, refresh the marketplace:
 
 ```bash
 claude plugin marketplace update prod-readiness-marketplace
+```
+
+If `prod-readiness` is not installed yet, install it:
+
+```bash
 claude plugin install prod-readiness@prod-readiness-marketplace --scope user
 ```
 
-Then restart Claude Code or run `/reload-plugins` inside Claude Code.
-
-If `claude plugin update` says the plugin is not installed at user scope, it
-was either never installed or was installed for one project only. Install it at
-user scope with the commands above, or update the scope where it already lives:
+If `prod-readiness` is already installed at user scope, update it instead:
 
 ```bash
-claude plugin update prod-readiness@prod-readiness-marketplace --scope local
-# or
-claude plugin update prod-readiness@prod-readiness-marketplace --scope project
+claude plugin update prod-readiness@prod-readiness-marketplace --scope user
 ```
 
-To check where the plugin is installed and whether it is enabled:
+Then restart Claude Code if necessary.
+
+To check whether the plugin is installed, its scope, version, and enabled status:
 
 ```bash
 claude plugin list --json
 ```
+
+If the plugin is installed under a different scope, update that scope instead:
+
+```bash
+claude plugin update prod-readiness@prod-readiness-marketplace --scope local
+```
+
+or:
+
+```bash
+claude plugin update prod-readiness@prod-readiness-marketplace --scope project
+```
+
+Claude Code supports `user`, `project`, and `local` plugin installation scopes. `user` is also the default scope for plugin installation and updating.
 
 Use `@` directly in these commands. You do not need to type `\@`.
 
