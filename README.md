@@ -1,4 +1,4 @@
-# prod-readiness
+# prod-readiness (Production Readiness Audit)
 
 ![Production-readiness audit signals converge on a go/no-go decision](assets/prod-readiness-banner.png)
 
