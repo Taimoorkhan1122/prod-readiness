@@ -416,6 +416,21 @@ def export(project_root: Path) -> Path:
         except (OSError, UnicodeError):
             pass
 
+    # The runtime lens ships two extra documents beyond the tex set: the
+    # SQA style report and the per bug CSV. Both travel with the export
+    # when the lens has written them. When the lens is skipped or has not
+    # run, both are absent and the tex docs still carry the runtime lens
+    # section, so nothing is copied and nothing is treated as an error.
+    for name in ("runtime-sqa.md", "runtime-bugs.csv"):
+        source = audit / name
+        if not source.exists():
+            continue
+        try:
+            (out_dir / name).write_text(
+                source.read_text(encoding="utf-8"), encoding="utf-8")
+        except (OSError, UnicodeError):
+            pass
+
     compiler = _find_tex_compiler()
     if compiler:
         _compile_pdf(compiler, out_dir)
