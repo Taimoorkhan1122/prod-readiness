@@ -1,11 +1,11 @@
 ---
 name: production-readiness-audit
-description: Run a seven-lens production readiness audit over a local codebase - one shared evidence pass, then seven read-only specialist agents (security, backend, frontend, devops, QA, database, AI security) that judge whether the system deserves real users, real attackers, and real load. Produces a persistent trail under .readiness-audit/ with an evidence ledger, evidence-tagged findings (CONFIRMED / NOT FOUND / UNVERIFIED), and a CTO-readable go/no-go report. Use this whenever someone asks "is this ready for production", "audit this repo before launch", "what's missing before we ship", "production readiness review", "review this codebase end to end", "what breaks at 10x", "are we safe to deploy", or asks for a go/no-go call on a system - and use it proactively when a launch, deploy, or scale-up decision is being discussed and nobody has checked what the system is missing. Not for reviewing a single PR or diff, and not for fixing what it finds - it audits and stops.
+description: Run an eight-lens production readiness audit over a local codebase - one shared evidence pass, then eight read-only specialist agents (security, backend, frontend, devops, QA, database, AI security, runtime) that judge whether the system deserves real users, real attackers, and real load. Produces a persistent trail under .readiness-audit/ with an evidence ledger, evidence-tagged findings (CONFIRMED / NOT FOUND / UNVERIFIED), and a CTO-readable go/no-go report. Use this whenever someone asks "is this ready for production", "audit this repo before launch", "what's missing before we ship", "production readiness review", "review this codebase end to end", "what breaks at 10x", "are we safe to deploy", or asks for a go/no-go call on a system - and use it proactively when a launch, deploy, or scale-up decision is being discussed and nobody has checked what the system is missing. Not for reviewing a single PR or diff, and not for fixing what it finds - it audits and stops.
 ---
 
 # Production readiness audit
 
-Seven senior engineers looking at the same system from seven angles. The job is
+Eight senior engineers looking at the same system from eight angles. The job is
 not code style. It is whether this thing survives contact with real users, real
 attackers, and real load.
 
@@ -22,7 +22,7 @@ find, and what you simply cannot see from here.
 1. **Read-only.** No source file, config, test, or dependency is modified. The
    only writes are under `.readiness-audit/`. If the user wants fixes, hand off
    at the end.
-2. **One evidence pass, seven evaluations.** Stage 2 scans; the lenses consume.
+2. **One evidence pass, eight evaluations.** Stage 2 scans; the lenses consume.
    A lens that re-scans the repository wholesale has burned the budget the
    isolation was meant to save.
 3. **Every finding carries an evidence state**, and `NOT_FOUND` cites a ledger
@@ -187,8 +187,8 @@ hotspots worth a lens's attention - auth paths, write paths, external calls,
 file and URL handling, infrastructure config. Facts and locations only; no
 findings and no opinions yet. The lenses form the opinions.
 
-Keep `map.md` tight. Seven agents will read it, so every wasted paragraph is
-paid for seven times.
+Keep `map.md` tight. Eight agents will read it, so every wasted paragraph is
+paid for eight times.
 
 ## Stage 3 - the lenses
 

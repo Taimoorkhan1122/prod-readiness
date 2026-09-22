@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Solo developers and vibe coders running the production-readiness audit against their own repo. They kick off `/production-readiness-audit`, then watch the dashboard on `127.0.0.1` while the seven-lens audit runs in the background, and read the go/no-go verdict when it finishes.
+Solo developers and vibe coders running the production-readiness audit against their own repo. They kick off `/production-readiness-audit`, then watch the dashboard on `127.0.0.1` while the eight-lens audit runs in the background, and read the go/no-go verdict when it finishes.
 
 ## Product Purpose
 
