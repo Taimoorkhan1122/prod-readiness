@@ -319,7 +319,9 @@ def build_report(root: Path) -> dict:
                 f"which give {computed}")
         verdict = {**verdict, "decision": computed}
 
-    lenses_with_findings = {f["lens"] for f in findings}
+    # A lens that wrote its file with zero findings is finished, not waiting.
+    lenses_with_findings = {f["lens"] for f in findings} | {
+        p.stem for p in findings_dir(root).glob("*.json")}
     by_lens = {lens: [f for f in findings if f["lens"] == lens] for lens in LENS_ORDER}
 
     severity_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
