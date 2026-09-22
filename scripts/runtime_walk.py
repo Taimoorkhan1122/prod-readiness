@@ -49,15 +49,24 @@ COVERAGE_FILE = "runtime-coverage.json"
 
 DESKTOP_VIEWPORT = "1280x800"
 MOBILE_VIEWPORT = "390x844"
+TABLET_VIEWPORT = "768x1024"
 DEFAULT_VIEWPORTS = (DESKTOP_VIEWPORT, MOBILE_VIEWPORT)
+RESPONSIVE_VIEWPORTS = (MOBILE_VIEWPORT, TABLET_VIEWPORT, DESKTOP_VIEWPORT)
+BREAKAGE_CLASSES = ("overlap", "clipping", "off-screen", "unusable-table")
+STATE_CHANGING_KINDS = ("create", "update", "delete", "write", "submit",
+                        "place-order", "checkout")
 
-CATEGORIES = ("layout", "navigation", "console")
+CATEGORIES = ("layout", "navigation", "console", "data", "responsive")
 
 # An explicit defect marker inside a static page. The walk reads the page
 # file and treats the marker as one observed defect. Real runs replace
 # file markers with live browser observations in the same shape.
 LAYOUT_MARKER_RE = re.compile(r'data-rt-issue\s*=\s*"layout:\s*([^"]+)"')
 NAV_MARKER_RE = re.compile(r'data-rt-issue\s*=\s*"nav:\s*([^"]+)"')
+DATA_MARKER_RE = re.compile(r'data-rt-issue\s*=\s*"data:\s*([^"]+)"')
+RESPONSIVE_MARKER_RE = re.compile(
+    r'data-rt-issue\s*=\s*"responsive:\s*([^"]+)"')
+VIEWPORT_TOKEN_RE = re.compile(r"\b(\d{3,4}x\d{3,4})\b")
 
 # A fixed pixel width at or above this value breaks the mobile viewport.
 FIXED_WIDTH_RE = re.compile(r"width\s*:\s*(\d{3,5})\s*px")
@@ -76,6 +85,12 @@ FACTORS = {
     "console": {"exposure": "internet", "data_class": "none",
                 "blast_radius": "single-user",
                 "compensating_control": "absent"},
+    "data": {"exposure": "internet", "data_class": "business",
+             "blast_radius": "single-tenant",
+             "compensating_control": "absent"},
+    "responsive": {"exposure": "internet", "data_class": "none",
+                   "blast_radius": "single-user",
+                   "compensating_control": "absent"},
 }
 
 
@@ -239,6 +254,417 @@ def scan_navigation(screen, target_dir):
 
 
 # --------------------------------------------------------------------------
+# Data, network, and responsive slice
+# --------------------------------------------------------------------------
+
+def _extract_viewport(text):
+    """Return the first viewport token in text, or None."""
+    match = VIEWPORT_TOKEN_RE.search(str(text or ""))
+    if match:
+        return match.group(1)
+    return None
+
+
+def _extract_total(value):
+    """Return the total from a bare value or a payload dict."""
+    if isinstance(value, dict):
+        for key in ("total", "count", "value", "amount"):
+            if key in value and value[key] is not None:
+                return value[key]
+        return None
+    return value
+
+
+def _normalize_total(value):
+    """Normalize one total for comparison."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return str(value)
+    text = str(value).strip()
+    if not text:
+        return ""
+    try:
+        number = float(text.replace(",", "").strip())
+        if number.is_integer():
+            return str(int(number))
+        return str(number)
+    except (ValueError, AttributeError):
+        return text
+
+
+def compare_ui_vs_api(page, displayed, api_payload, endpoint, status,
+                      viewport=DESKTOP_VIEWPORT):
+    """Compare one displayed number with one read-only API payload.
+
+    The API payload is the expected value. The displayed number is
+    the actual value. A match returns None. A mismatch returns one
+    data observation with endpoint, status, expected, actual, and page.
+    The helper sends no request. It compares caller-supplied data only.
+    """
+    page_token = str(page or "/").strip() or "/"
+    viewport_token = str(viewport or DESKTOP_VIEWPORT).strip()
+    endpoint_token = str(endpoint or "").strip() or "(unknown endpoint)"
+    if status is None:
+        status_token = "(unknown status)"
+    else:
+        status_token = str(status).strip() or "(unknown status)"
+    expected = _extract_total(api_payload)
+    actual = _extract_total(displayed)
+    if _normalize_total(expected) == _normalize_total(actual):
+        return None
+    expected_text = str(expected) if expected is not None else "(missing)"
+    actual_text = str(actual) if actual is not None else "(missing)"
+    detail = ("UI shows %s on %s but GET %s status %s returns %s" % (
+        actual_text, page_token, endpoint_token, status_token,
+        expected_text))
+    observed = ("opened %s and saw %s while GET %s status %s returns %s" % (
+        page_token, actual_text, endpoint_token, status_token,
+        expected_text))
+    return redact({
+        "category": "data",
+        "screen": page_token,
+        "page": page_token,
+        "viewport": viewport_token,
+        "detail": detail,
+        "observed": observed,
+        "reproduced": True,
+        "endpoint": endpoint_token,
+        "status": status_token,
+        "expected": expected_text,
+        "actual": actual_text,
+    })
+
+
+def compare_cross_page_totals(locations):
+    """Compare totals shown on two or more pages.
+
+    Each location holds page and total. Agreement returns an empty
+    list. Disagreement returns one data observation that cites both
+    locations. The helper reads caller-supplied data only.
+    """
+    items = list(locations or [])
+    if len(items) < 2:
+        return []
+    normalized = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        page = str(item.get("page") or item.get("screen") or "/").strip()
+        total = _extract_total(item.get("total", item.get("value")))
+        normalized.append((page or "/", _normalize_total(total),
+                           str(total) if total is not None else "(missing)"))
+    if len(normalized) < 2:
+        return []
+    first_value = normalized[0][1]
+    if all(entry[1] == first_value for entry in normalized):
+        return []
+    first = None
+    second = None
+    for entry in normalized:
+        if entry[1] != first_value:
+            second = entry
+            first = normalized[0]
+            break
+    if first is None:
+        first = normalized[0]
+        second = normalized[1]
+    detail = ("Total on %s is %s but total on %s is %s. "
+              "The totals disagree." % (
+                  first[0], first[2], second[0], second[2]))
+    observed = ("opened %s and %s and saw totals %s and %s. "
+                "The totals disagree." % (
+                    first[0], second[0], first[2], second[2]))
+    return [redact({
+        "category": "data",
+        "screen": first[0],
+        "page": first[0],
+        "viewport": DESKTOP_VIEWPORT,
+        "detail": detail,
+        "observed": observed,
+        "reproduced": True,
+    })]
+
+
+def _table_search(rows, query):
+    """Filter rows by a case-insensitive substring query."""
+    query_text = str(query or "").strip().lower()
+    if not query_text:
+        return list(rows)
+    matched = []
+    for row in rows:
+        if isinstance(row, dict):
+            haystack = " ".join(str(value) for value in row.values()).lower()
+        else:
+            haystack = str(row).lower()
+        if query_text in haystack:
+            matched.append(row)
+    return matched
+
+
+def exercise_search_filter_sort_pagination(dataset, actions):
+    """Run read-only table actions over supplied rows.
+
+    The helper copies the dataset and never mutates the input. Each
+    read-only search, filter, sort, and pagination action runs against
+    the copy. Each state-changing action is skipped with a recorded
+    reason and never runs. Empty and no-result probes always run.
+    """
+    rows = list(dataset or [])
+    ordered_actions = list(actions or [])
+    results = []
+    skipped = []
+    for action in ordered_actions:
+        if not isinstance(action, dict):
+            skipped.append(redact({
+                "name": "(unnamed)",
+                "kind": "(unknown)",
+                "reason": "Action is not an object. The lens skips it.",
+            }))
+            continue
+        name = str(action.get("name") or action.get("kind")
+                   or "(unnamed)").strip()
+        kind = str(action.get("kind") or "").strip().lower()
+        if action.get("state_changing") is True or kind in STATE_CHANGING_KINDS:
+            skipped.append(redact({
+                "name": name,
+                "kind": kind or "(unknown)",
+                "reason": ("Action is state-changing. "
+                           "The lens records it and skips it."),
+            }))
+            continue
+        if kind == "search":
+            query = str(action.get("query") or "")
+            matched = _table_search(rows, query)
+            results.append({"name": name, "kind": "search",
+                            "query": query, "count": len(matched),
+                            "rows": matched})
+        elif kind == "filter":
+            field = action.get("field")
+            value = action.get("value")
+            if field is None:
+                matched = []
+            else:
+                matched = [row for row in rows
+                           if isinstance(row, dict)
+                           and str(row.get(field)) == str(value)]
+            results.append({"name": name, "kind": "filter",
+                            "field": field, "value": value,
+                            "count": len(matched), "rows": matched})
+        elif kind == "sort":
+            field = action.get("field")
+            direction = str(action.get("direction") or "asc").strip().lower()
+            reverse = direction == "desc"
+
+            def _sort_key(row):
+                if isinstance(row, dict) and field:
+                    raw = row.get(field)
+                else:
+                    raw = row
+                if isinstance(raw, bool):
+                    return (1, 0.0, str(raw))
+                if isinstance(raw, (int, float)):
+                    return (0, float(raw), "")
+                try:
+                    return (0, float(str(raw).strip()), "")
+                except (TypeError, ValueError, AttributeError):
+                    return (1, 0.0, str(raw).lower())
+
+            try:
+                ordered = sorted(rows, key=_sort_key, reverse=reverse)
+            except Exception:
+                ordered = list(rows)
+            results.append({"name": name, "kind": "sort",
+                            "field": field, "direction": direction,
+                            "count": len(ordered), "rows": ordered})
+        elif kind in ("pagination", "paginate", "page"):
+            try:
+                page_number = int(action.get("page", 1))
+            except (TypeError, ValueError):
+                page_number = 1
+            try:
+                per_page = int(action.get("per_page",
+                                          action.get("perPage", 10)))
+            except (TypeError, ValueError):
+                per_page = 10
+            if page_number < 1:
+                page_number = 1
+            if per_page < 1:
+                per_page = 10
+            start = (page_number - 1) * per_page
+            sliced = rows[start:start + per_page]
+            results.append({"name": name, "kind": "pagination",
+                            "page": page_number, "per_page": per_page,
+                            "count": len(sliced), "rows": sliced})
+        else:
+            skipped.append(redact({
+                "name": name,
+                "kind": kind or "(unknown)",
+                "reason": ("Action kind is unknown. "
+                           "The lens skips it without execution."),
+            }))
+    results.append({"name": "empty-dataset", "kind": "search",
+                    "query": "", "count": 0, "rows": [],
+                    "note": "Empty dataset returns no rows."})
+    probe = "__no_such_value__"
+    while _table_search(rows, probe):
+        probe += "_x"
+    no_result_rows = _table_search(rows, probe)
+    results.append({"name": "no-result", "kind": "search",
+                    "query": probe, "count": len(no_result_rows),
+                    "rows": no_result_rows,
+                    "note": "No-result query returns no rows."})
+    return redact({"results": results, "skipped": skipped})
+
+
+def _detect_breakage(layout_report):
+    """Return the canonical breakage class in a layout report, or None."""
+    if isinstance(layout_report, dict):
+        explicit = str(layout_report.get("breakage")
+                        or layout_report.get("type") or "").strip()
+        explicit = explicit.lower().replace("_", "-")
+        if explicit in BREAKAGE_CLASSES:
+            return explicit
+        for key, token in (("overlap", "overlap"), ("clipping", "clip"),
+                           ("off_screen", "off"), ("off-screen", "off"),
+                           ("table", "table")):
+            if layout_report.get(key):
+                if key == "table":
+                    return "unusable-table"
+                if key in ("off_screen", "off-screen"):
+                    return "off-screen"
+                return key
+        for value in layout_report.values():
+            found = _detect_breakage(str(value)) if value else None
+            if found:
+                return found
+        return None
+    lowered = str(layout_report or "").lower().replace("_", "-")
+    if not lowered.strip():
+        return None
+    for token in BREAKAGE_CLASSES:
+        if token in lowered:
+            return token
+    if "overlap" in lowered:
+        return "overlap"
+    if "clip" in lowered:
+        return "clipping"
+    if "off" in lowered and "screen" in lowered:
+        return "off-screen"
+    if "table" in lowered or "horizontal" in lowered:
+        return "unusable-table"
+    return None
+
+
+def _describe_breakage(layout_report, breakage):
+    """Return a short human description of a layout report."""
+    if isinstance(layout_report, dict):
+        for key in ("detail", "description", "observed", "note"):
+            text = str(layout_report.get(key) or "").strip()
+            if text:
+                return text
+        return "layout breaks with %s" % breakage
+    text = str(layout_report or "").strip()
+    if text:
+        return text
+    return "layout breaks with %s" % breakage
+
+
+def check_viewport(screen, viewport, layout_report):
+    """Check one screen at one viewport for responsive defects.
+
+    A clean layout returns None. A broken layout returns one
+    responsive observation that cites the exact viewport and the
+    breakage class. The helper reads caller-supplied data only.
+    """
+    viewport_token = str(viewport or "").strip()
+    if not viewport_token:
+        raise WalkError("Viewport is missing: state the viewport.")
+    page_token = str(screen or "/").strip() or "/"
+    breakage = _detect_breakage(layout_report)
+    if breakage is None:
+        return None
+    description = _describe_breakage(layout_report, breakage)
+    detail = "%s at %s: %s" % (breakage, viewport_token, description)
+    observed = ("opened %s at %s and saw %s (%s)" % (
+        page_token, viewport_token, description, breakage))
+    return redact({
+        "category": "responsive",
+        "screen": page_token,
+        "page": page_token,
+        "viewport": viewport_token,
+        "detail": detail,
+        "observed": observed,
+        "reproduced": True,
+        "breakage": breakage,
+    })
+
+
+def scan_data(screen):
+    """Read one page file and return data markers as observation dicts.
+
+    The scan reads the file only. Each data marker becomes one data
+    observation at the desktop viewport, unless the marker names
+    another viewport. The observation keeps the full marker text, so
+    endpoint, status, expected, and actual stay in the finding.
+    """
+    defects = []
+    file = screen.get("file")
+    if not file:
+        return defects
+    try:
+        text = Path(file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return defects
+    for match in DATA_MARKER_RE.finditer(text):
+        detail = match.group(1).strip()
+        viewport = _extract_viewport(detail) or DESKTOP_VIEWPORT
+        defects.append({
+            "category": "data",
+            "screen": screen["screen"],
+            "page": screen["page"],
+            "viewport": viewport,
+            "detail": detail,
+            "observed": "data check on %s: %s" % (
+                screen["page"], detail),
+            "reproduced": True,
+        })
+    return defects
+
+
+def scan_responsive(screen):
+    """Read one page file and return responsive markers as observations.
+
+    The scan reads the file only. Each responsive marker becomes one
+    responsive observation. The viewport comes from the marker text
+    when present, else the mobile viewport. The detail keeps the
+    breakage class from the marker text.
+    """
+    defects = []
+    file = screen.get("file")
+    if not file:
+        return defects
+    try:
+        text = Path(file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return defects
+    for match in RESPONSIVE_MARKER_RE.finditer(text):
+        detail = match.group(1).strip()
+        viewport = _extract_viewport(detail) or MOBILE_VIEWPORT
+        defects.append({
+            "category": "responsive",
+            "screen": screen["screen"],
+            "page": screen["page"],
+            "viewport": viewport,
+            "detail": detail,
+            "observed": "responsive check on %s at %s: %s" % (
+                screen["page"], viewport, detail),
+            "reproduced": True,
+        })
+    return defects
+
+
+# --------------------------------------------------------------------------
 # Finding builders - page, viewport, and observed behavior in each finding
 # --------------------------------------------------------------------------
 
@@ -269,6 +695,10 @@ def _titles(category, page, detail):
         return "Layout defect on %s: %s" % (page, _short(detail, 60))
     if category == "navigation":
         return "Broken route on %s: %s" % (page, _short(detail, 60))
+    if category == "data":
+        return "Data mismatch on %s: %s" % (page, _short(detail, 60))
+    if category == "responsive":
+        return "Responsive defect on %s: %s" % (page, _short(detail, 60))
     return "Console report on %s: %s" % (page, _short(detail, 60))
 
 
@@ -280,6 +710,12 @@ def _impact(category, page, reproduced):
         if category == "navigation":
             return ("Users may follow a link on %s and reach a dead end. "
                     "They may fail to finish the task." % page)
+        if category == "data":
+            return ("Shoppers may see a wrong number on %s. "
+                    "They may lose trust in the page." % page)
+        if category == "responsive":
+            return ("Visitors may fail to use %s on a small screen. "
+                    "Content may overlap or run off the screen." % page)
         return ("The page on %s may report an error while users watch. "
                 "Users may lose trust in the page." % page)
     if category == "layout":
@@ -288,6 +724,12 @@ def _impact(category, page, reproduced):
     if category == "navigation":
         return ("Users follow a link on %s and reach a dead end. "
                 "They cannot finish the task." % page)
+    if category == "data":
+        return ("Shoppers see a wrong number on %s. "
+                "They cannot trust the page." % page)
+    if category == "responsive":
+        return ("Visitors cannot use %s on a small screen. "
+                "Content overlaps or runs off the screen." % page)
     return ("The page on %s reports an error while users watch. "
             "Users lose trust in the page." % page)
 
@@ -300,6 +742,13 @@ def _fix(category, page, viewport):
     if category == "navigation":
         return ("Restore the missing route from %s or remove the link. "
                 "Revisit the page and follow the link again." % page)
+    if category == "data":
+        return ("Fix the data source for %s so the page matches the API. "
+                "Revisit the page and compare the numbers again." % page)
+    if category == "responsive":
+        return ("Fix the layout on %s so the content fits %s. "
+                "Revisit the page at 390x844, 768x1024, and 1280x800 "
+                "and record each result." % (page, viewport))
     return ("Remove the cause of the console report on %s. "
             "Reload the page and confirm the console stays clean." % page)
 
@@ -374,14 +823,18 @@ def console_entry_to_observation(entry, default_viewport=DESKTOP_VIEWPORT):
 # --------------------------------------------------------------------------
 
 def run_walk(root, target, viewports=None, console_entries=None,
-             network_entries=None, observations=None):
+             network_entries=None, observations=None, api_checks=None,
+             totals_checks=None, table_cases=None, viewport_reports=None):
     """Walk the live target and write findings plus coverage.
 
     The runner calls check_runtime_ready first and stops when the live
-    target is missing or unreachable. It then walks the screen list at
-    each viewport, scans layout and navigation, reads caller-supplied
-    console and network entries as data, and writes findings/runtime.json
-    and runtime-coverage.json. It returns a summary dict.
+    target is missing or unreachable. It walks the screen list at
+    each viewport, scans layout, navigation, data, and responsive
+    markers, reads caller-supplied console and network entries as
+    data, compares UI numbers with API payloads, compares totals
+    across pages, checks viewports, and writes findings/runtime.json
+    and runtime-coverage.json. It returns a summary dict. Table cases
+    run read-only and never change data.
     """
     ready, message = check_runtime_ready(root)
     if not ready:
@@ -404,6 +857,8 @@ def run_walk(root, target, viewports=None, console_entries=None,
         if target_dir:
             collected.extend(scan_layout(screen))
             collected.extend(scan_navigation(screen, target_dir))
+            collected.extend(scan_data(screen))
+            collected.extend(scan_responsive(screen))
     for entry in redact(list(console_entries or [])):
         obs = console_entry_to_observation(entry)
         if obs is not None:
@@ -415,6 +870,39 @@ def run_walk(root, target, viewports=None, console_entries=None,
         item = dict(obs)
         item.setdefault("reproduced", True)
         collected.append(item)
+    for check in list(api_checks or []):
+        if not isinstance(check, dict):
+            raise WalkError("Each API check must state page, displayed "
+                            "value, API payload, endpoint, and status.")
+        obs = compare_ui_vs_api(
+            check.get("page", "/"), check.get("displayed"),
+            check.get("api_payload"), check.get("endpoint"),
+            check.get("status"), check.get("viewport") or DESKTOP_VIEWPORT)
+        if obs is not None:
+            collected.append(obs)
+    for item in list(totals_checks or []):
+        if isinstance(item, dict) and "locations" in item:
+            locations = item.get("locations")
+        else:
+            locations = item
+        if not isinstance(locations, list):
+            raise WalkError("Each totals check must hold a locations list.")
+        collected.extend(compare_cross_page_totals(locations))
+    for case in list(table_cases or []):
+        if not isinstance(case, dict):
+            raise WalkError("Each table case must state dataset and actions.")
+        exercise_search_filter_sort_pagination(
+            case.get("dataset", []), case.get("actions", []))
+    for report in list(viewport_reports or []):
+        if not isinstance(report, dict):
+            raise WalkError("Each viewport report must state screen, "
+                            "viewport, and layout report.")
+        obs = check_viewport(
+            report.get("screen") or report.get("page") or "/",
+            report.get("viewport"),
+            report.get("layout_report", report.get("detail", "")))
+        if obs is not None:
+            collected.append(obs)
 
     findings = [observation_to_finding(obs, num)
                 for num, obs in enumerate(collected, 1)]
