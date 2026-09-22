@@ -4,6 +4,12 @@
 
 **Production readiness and adversarial code-review skill for Claude Code and AI-generated apps. Audit security, tests, reliability, deployment risks, and launch blockers before you ship.**
 
+`prod-readiness` is a read-only audit that answers one question: is this app safe
+to launch? It runs one shared evidence pass, then eight specialist lenses
+(security, backend, database, DevOps, QA, frontend, AI security, runtime) that
+write evidence-tagged findings and produce a go/no-go verdict of SHIP,
+FIX THEN SHIP, or HOLD.
+
 `prod-readiness` is a read-only, whole-repository audit for the question that
 matters after a prototype works: **is this safe to launch?** It produces an
 evidence-backed go/no-go report across security, backend, database, DevOps, QA,
@@ -351,7 +357,7 @@ To remove the plugin later, open Claude Code and enter:
 If you edit the plugin files yourself, enter `/reload-plugins` in Claude Code
 to use the latest changes.
 
-## How the audit works
+## How does the audit work?
 
 ```text
 Stage 0  Preflight    Record the git ref, working-tree state, and resume point
@@ -366,7 +372,11 @@ The eight lenses cover security, backend, database, DevOps, QA, frontend,
 AI security, and runtime (live-app QA, runs only with a live target). Lenses with no signal are explicitly skipped rather than inventing
 findings.
 
-## Evidence, not confident guesses
+By the numbers: 8 specialist lenses, 3 review waves, about 90 deterministic
+control probes, a P0-P3 severity rubric derived from four scored factors, and
+5 progress checkpoints per lens on the live dashboard.
+
+## How does the audit separate evidence from guesses?
 
 Production-readiness audits often confuse three different states:
 
@@ -417,6 +427,36 @@ approval-gated remediation workflow when you are ready to change the code.
 
 Consider adding `.readiness-audit/` to `.gitignore` unless you intentionally
 want audit records checked into version control.
+
+## Frequently asked questions
+
+**Is this a code review?**
+No. A code review judges a diff. This audit judges launch readiness: missing
+backups, untested recovery paths, unsafe trust boundaries, weak coverage, and
+operational blind spots across the whole repository.
+
+**What do I get at the end?**
+A go/no-go verdict (SHIP, FIX THEN SHIP, or HOLD), evidence-tagged findings
+per lens, a live dashboard while it runs, and an exportable report set.
+
+**Does it change my code?**
+No. The audit is read-only. It writes only the `.readiness-audit/` trail in
+the project under review.
+
+**How is this different from asking Claude "is this ready?"**
+A freeform answer mixes proof with guesses. Here every finding carries one
+evidence state (CONFIRMED, NOT FOUND, or UNVERIFIED), and the validator blocks
+the report when a claim outruns its evidence.
+
+**Does it test the running app?**
+Yes, when you provide a live target. The runtime lens walks the live app
+read-only: screens, navigation, console health, data against API payloads,
+search and pagination, and responsive viewports.
+
+**Which agents can run it?**
+Claude Code through the marketplace plugin. Codex, OpenCode, Pi, Antigravity,
+or any agent that reads Markdown and runs Python 3 through the shared prompt
+in "Use it with other AI coding agents" above.
 
 ## Tune the audit
 
