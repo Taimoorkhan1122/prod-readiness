@@ -1,6 +1,6 @@
 # prod-readiness (Production Readiness Audit)
 
-![Production-readiness audit signals converge on a go/no-go decision](assets/prod-readiness-banner.png)
+![Production-readiness audit signals converge on a go/no-go decision](assets/prod-readiness-banner.jpg)
 
 **Production readiness and adversarial code-review skill for Claude Code and AI-generated apps. Audit security, tests, reliability, deployment risks, and launch blockers before you ship.**
 
