@@ -31,12 +31,12 @@ DECISION_TEXT = {
     "HOLD": "HOLD - DO NOT DEPLOY",
 }
 
-LENS_ORDER = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security"]
+LENS_ORDER = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security", "runtime"]
 LENS_TITLE = {
     "security": "Security Engineer", "backend": "Backend Architect",
     "frontend": "Frontend Engineer", "devops": "DevOps Engineer",
     "qa": "QA Engineer", "database": "Database Engineer",
-    "ai-security": "AI Security Engineer",
+    "ai-security": "AI Security Engineer", "runtime": "Runtime QA Engineer",
 }
 RECOVERY_ROWS = [
     ("Backups", "backup_config"),

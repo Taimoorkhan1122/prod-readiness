@@ -164,16 +164,19 @@ paid for seven times.
 ## Stage 3 - the lenses
 
 Read `references/lens-dispatch.md`, then dispatch. In short: decide which lenses
-have signal, record the skips with reasons, and run two waves - security,
-backend, database first, then devops, qa, frontend, ai-security, so the second
-wave can reference the first's findings instead of duplicating them.
+have signal, record the skips with reasons, and run three waves - security,
+backend, database first, then devops, qa, frontend, ai-security, then runtime
+only when a live URL is present, so each later wave can reference the earlier
+waves findings instead of duplicating them.
 
 Agent types are `prod-readiness:lens-security`, `lens-backend`, `lens-frontend`,
-`lens-devops`, `lens-qa`, `lens-database`, `lens-ai-security`.
+`lens-devops`, `lens-qa`, `lens-database`, `lens-ai-security`, `lens-runtime`.
 
 A lens with no signal is skipped and the skip is declared in the report. The AI
 security lens in particular states CONFIRMED NOT PRESENT and stops rather than
-inventing risks for a system with no model calls in it.
+inventing risks for a system with no model calls in it. The runtime lens is
+skipped with a recorded reason when there is no live URL, or when the target
+is unreachable at intake, and the verdict stays valid without it.
 
 Run `validate_findings.py` between waves. If a lens produced errors, send that
 lens back with the validator output rather than editing its findings yourself.

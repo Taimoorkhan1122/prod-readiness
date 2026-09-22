@@ -1,9 +1,11 @@
 # Stage 3 - dispatching the lenses
 
-Seven agents, one evidence body. The whole point of Stage 2 was to make the
+Eight agents, one evidence body. The whole point of Stage 2 was to make the
 expensive scanning happen once, so a lens that re-reads the entire repository
 has defeated the design. Each lens does targeted verification only: it reads the
 evidence pack, forms hypotheses, and then opens the specific files it needs.
+The runtime lens is the exception: it observes the live target instead of the
+source, and it runs last so it can use what the static lenses already found.
 
 ## Which lenses run
 
@@ -23,16 +25,28 @@ Record every skip with its reason:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit_state.py" set-lenses <root> \
   --run security,backend,devops,qa,database \
   --skip frontend="no frontend code found in repository" \
-  --skip ai-security="no LLM or model provider SDK found in repository"
+  --skip ai-security="no LLM or model provider SDK found in repository" \
+  --skip runtime="no live URL provided at intake"
 ```
+
+The runtime lens is skipped whenever there is no live target to observe. More
+examples:
+
+```bash
+--skip runtime="no live URL provided at intake"
+--skip runtime="staging URL unreachable at intake, connection refused"
+```
+
+A skipped runtime lens keeps the verdict valid. The report names the skip and
+the reason, and the dashboard shows the lens as not applicable.
 
 Skipping a lens because it has nothing to look at is proportionality. Skipping
 one because the audit is running long is not - say so plainly if you have to
 stop early, and mark the report incomplete.
 
-## Default: two parallel waves
+## Default: three parallel waves
 
-Dispatch in two waves rather than all seven at once. Agents run in isolated
+Dispatch in three waves rather than all eight at once. Agents run in isolated
 context windows and cannot see each other, so the wave split is what makes the
 cross-lens ownership table actually work:
 
@@ -46,6 +60,14 @@ files before writing their own, so they can reference an existing ID with
 wave-2 agent concurrently in the same assistant turn, then wait for all of
 them.** Tell them explicitly that `.readiness-audit/findings/*.md` already
 contains wave 1 output.
+
+**Wave 3 - runtime, only when a live URL is present.** The runtime lens reads
+the wave 1 and wave 2 findings files before it opens the live target, so it
+can reference an existing ID with `see:` instead of duplicating. After
+validating wave 2, **launch the runtime agent on its own, then wait for it.**
+Tell it explicitly that `.readiness-audit/findings/` already contains the
+static waves. When no live URL is present, or the target is unreachable at
+intake, skip the lens with a recorded reason instead of dispatching it.
 
 Read `execution_mode` from `.readiness-audit/state.json`. If it is missing,
 treat the audit as `parallel` for backward compatibility. Parallel is the
@@ -65,6 +87,7 @@ next one in this fixed order:
 5. qa
 6. frontend (unless skipped)
 7. ai-security (unless skipped)
+8. runtime (unless skipped - no live URL means no wave 3)
 
 The same ownership rules apply. Later lenses read the findings already written
 by earlier lenses, and every selected lens still runs unless the signal table
@@ -82,8 +105,10 @@ Run your lens against this project.
 Project root: /abs/path/to/repo
 Audit directory: /abs/path/to/repo/.readiness-audit
 Plugin root: /abs/path/to/plugin        (references/ and scripts/ live here)
-Wave: 1 of 2                            (or: 2 of 2 - wave 1 findings are already
-                                         in .readiness-audit/findings/)
+Wave: 1 of 3                            (or: 2 of 3 - wave 1 findings are already
+                                         in .readiness-audit/findings/
+                                         or: 3 of 3 - wave 1 and 2 findings are
+                                         already in .readiness-audit/findings/)
 
 Read in this order before touching source:
   .readiness-audit/context.md
@@ -98,7 +123,7 @@ Return a summary of at most 10 lines: counts by severity, your single scariest
 item, and anything you could not determine. Do not paste findings into the reply.
 ```
 
-That last line matters. Seven agents each returning their full findings would
+That last line matters. Eight agents each returning their full findings would
 put the entire report back into the orchestrator's context window, which is the
 cost the isolation was supposed to avoid. The files on disk are the deliverable;
 the reply is a receipt.
