@@ -37,7 +37,7 @@ STATES = {"CONFIRMED", "NOT_FOUND", "UNVERIFIED"}
 SEVERITIES = {"P0", "P1", "P2", "P3"}
 LENS_PREFIX = {
     "SEC": "security", "BE": "backend", "FE": "frontend", "OPS": "devops",
-    "QA": "qa", "DB": "database", "AI": "ai-security",
+    "QA": "qa", "DB": "database", "AI": "ai-security", "RT": "runtime",
 }
 LENS_TO_PREFIX = {v: k for k, v in LENS_PREFIX.items()}
 
@@ -49,6 +49,26 @@ OVERCLAIM = re.compile(
     r"has never been|is never|no .{0,30} exists\b)", re.IGNORECASE)
 
 EVIDENCE_LOC = re.compile(r"[\w./\\-]+\.[A-Za-z0-9]+:\d+")
+
+# Runtime lens proof is a live observation, not a code location: a page or URL
+# that was opened, a viewport the page was read at, or a read-only console or
+# network check. File:line stays allowed in runtime evidence but never suffices
+# alone. The route pattern takes a leading-slash token with no dot, and the
+# lookahead rejects a longer match, so an absolute file path such as
+# /home/user/repo/cart.ts never reads as a page route.
+RUNTIME_PAGE = re.compile(
+    r"https?://[^\s,)\]]+"
+    r"|(?:^|[\s,(\[])(/(?:[A-Za-z0-9_\-~]+(?:/[A-Za-z0-9_\-~]*)*)?)"
+    r"(?![A-Za-z0-9_\-~/:.])"
+)
+RUNTIME_VIEWPORT = re.compile(
+    r"\b\d{3,4}\s?[xX]\s?\d{3,4}\b|\b(?:mobile|desktop|tablet)\b"
+)
+RUNTIME_OBSERVATION = re.compile(
+    r"\bconsole\b|\bnetwork\b|\bviewport\b|\bobserved\b"
+    r"|\bscreenshot\b|\bdevtools\b|\bHAR\b|\bread.only\b",
+    re.IGNORECASE,
+)
 
 # A file path, a dotted symbol, or anything in backticks - the shapes that mean
 # an `impact` line was written for an engineer rather than for the reader.
@@ -225,8 +245,15 @@ def validate(root: Path):
 
         if state == "CONFIRMED":
             ev = F.get("evidence", "")
+            is_runtime = (LENS_PREFIX.get(prefix) == "runtime"
+                          and fd["lens_file"] == "runtime")
             if empty(ev):
                 err("CONFIRMED requires evidence")
+            elif is_runtime:
+                if not (RUNTIME_PAGE.search(ev) or RUNTIME_VIEWPORT.search(ev)
+                        or RUNTIME_OBSERVATION.search(ev)):
+                    err("CONFIRMED runtime evidence must cite a live observation "
+                        f"(page or URL, viewport, or console/network check), got {ev!r}")
             elif not EVIDENCE_LOC.search(ev):
                 err(f"CONFIRMED evidence must cite file:line, got {ev!r}")
 
@@ -275,6 +302,28 @@ def validate(root: Path):
                     "was found - a plausible compensating control demotes this to P1")
 
     # cross-lens duplication: same underlying thing reported twice
+    def live_page_token(ev):
+        """Normalised page token for a live observation, or None.
+
+        A URL and a bare route to the same page share one token: the scheme,
+        host, query, and fragment are dropped, case is folded, and a trailing
+        slash is removed. Findings that cite only file:line or a probe never
+        reach this helper, so their fingerprints are unchanged.
+        """
+        m = RUNTIME_PAGE.search(ev)
+        if not m:
+            return None
+        if m.group(0).lstrip()[:4].lower() == "http":
+            token = re.sub(r"^https?://[^/\s,)\]]+", "", m.group(0))
+            token = re.split(r"[?#]", token, maxsplit=1)[0]
+        else:
+            token = m.group(1) or ""
+        token = token.strip()
+        if not token:
+            return None
+        token = token.lower().rstrip("/").rstrip(".,;:!?)") or "/"
+        return "live:" + token
+
     def fingerprint(fd):
         F = fd["fields"]
         probe = F.get("probe", "").strip()
@@ -284,6 +333,9 @@ def validate(root: Path):
         m = EVIDENCE_LOC.search(ev)
         if m:
             return "loc:" + m.group(0).rsplit(":", 1)[0]
+        token = live_page_token(ev)
+        if token:
+            return token
         return None
 
     buckets = {}

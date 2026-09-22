@@ -45,14 +45,14 @@ generates it from your JSON.
 
 | Field | Meaning |
 | --- | --- |
-| `id` | `PRA-<PREFIX>-<NNN>`. Prefixes: `SEC`, `BE`, `FE`, `OPS`, `QA`, `DB`, `AI`. Number within your own lens, from 001. |
+| `id` | `PRA-<PREFIX>-<NNN>`. Prefixes: `SEC`, `BE`, `FE`, `OPS`, `QA`, `DB`, `AI`, `RT`. Number within your own lens, from 001. |
 | `title` | One line naming the problem. Required. |
 | `impact` | **What this costs a non-technical reader.** See below. Required. |
 | `state` | `CONFIRMED`, `NOT_FOUND`, or `UNVERIFIED`. Exactly one. |
 | `factors` | Object with `exposure`, `data_class`, `blast_radius`, `compensating_control`. A script derives `severity` from these four values - see Severity below. Do not set `severity` yourself. |
 | `owner` | Your lens, or the lens that owns it if you are cross-referencing. |
 | `cross_lens` | Array of other lenses this touches. `[]` if none. |
-| `evidence` | Array of `path/to/file.ts:120` strings for CONFIRMED. One entry per location - never a prose sentence. For NOT_FOUND, `["searched, not found in scope"]`. |
+| `evidence` | Array of `path/to/file.ts:120` strings for CONFIRMED. One entry per location - never a prose sentence. The runtime lens cites live observations instead: page or URL, viewport, and observed behavior, or a read-only console or network check. For NOT_FOUND, `["searched, not found in scope"]`. |
 | `probe` | Absence-ledger control id. Required for NOT_FOUND. `null` otherwise. |
 | `failure_path` | The specific articulable path to harm. Required for P0. |
 | `compensating` | The mitigating control, or `"none found"`. Required for P0. |
@@ -116,7 +116,10 @@ because it sends a team to build something they already have, or worse, tells
 them a gap is closed when nobody checked.
 
 **`CONFIRMED`** - you read the code and the problem is there. Cite `file:line`.
-This is the only state that may be stated as fact.
+This is the only state that may be stated as fact. The runtime lens states
+what it saw in a live page instead: the page or URL, the viewport, and the
+observed behavior, or a read-only console or network check. A runtime finding
+with no evidence is rejected, like any lens.
 
 **`NOT_FOUND`** - you searched within the scope you actually had and the control
 was not there. You must cite a `probe` id from `.readiness-audit/evidence/
