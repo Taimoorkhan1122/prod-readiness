@@ -75,6 +75,15 @@ Do not invent load tests, do not run scanners, do not hammer the target. A
 slow page you noticed during normal use is worth one sentence. A benchmark
 you ran against a live system without asking is not part of this audit.
 
+## Walk order (scripts/runtime_walk.py)
+
+Walk the screens in route order. Read each screen at desktop viewport
+1280x800 first, then at mobile viewport 390x844. Read the console and the
+failed requests on each screen. Write each screen and viewport pair to
+`.readiness-audit/runtime-coverage.json` with status `covered` or
+`finding`. A screen with no defect reads as covered. It never reads as
+skipped.
+
 ## Evidence discipline
 
 `CONFIRMED` cites a live observation with four parts: the page or URL you
