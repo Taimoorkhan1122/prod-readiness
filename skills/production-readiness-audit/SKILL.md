@@ -42,6 +42,9 @@ find, and what you simply cannot see from here.
 ├── context.md                      # Stage 1 - criticality, RTO/RPO, scale, threat model
 ├── scope.md                        # Stage 1 - what you can and cannot see
 ├── runtime-context.json            # Stage 1 - live target, role, credential reference only
+├── runtime-coverage.json           # Stage 3 - screens walked per viewport
+├── runtime-sqa.md                  # Stage 3 - SQA style runtime report
+├── runtime-bugs.csv                # Stage 3 - one row per runtime bug
 ├── evidence/
 │   ├── inventory.json              # Stage 2 - what exists
 │   ├── absence-ledger.{json,md}    # Stage 2 - what was searched for

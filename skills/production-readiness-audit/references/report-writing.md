@@ -82,6 +82,24 @@ has broken the discipline the whole audit rests on. This section is where a
 reader checks whether the panel was honest, so it is worth getting exactly
 right.
 
+## Runtime lens in the report and export
+
+The runtime lens runs only when a live URL is present and reachable.
+No live URL means the lens is skipped. Record the reason in state.
+An unreachable URL aborts the run before lenses start. Start no lens
+in that case. Report the gate message instead.
+
+A run writes four runtime files. `findings/runtime.json` holds the
+validated findings. `runtime-coverage.json` holds one row per screen and
+viewport. `runtime-sqa.md` holds the SQA style report with the release
+call. `runtime-bugs.csv` holds one row per bug with a fixed header.
+
+The main report includes the runtime findings with the other lenses.
+The export includes the combined document and the per lens runtime
+document. It also copies `runtime-sqa.md` and `runtime-bugs.csv` when
+both exist. A skipped lens still appears in the report and the export
+with its recorded reason.
+
 ## Before you hand it over
 
 - No `<!-- FILL` markers remain (`assemble_report.py` reports the count).
