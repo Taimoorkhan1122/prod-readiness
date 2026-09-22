@@ -73,3 +73,34 @@ scope.md and the ledger should agree.
 
 Also record the git ref the audit ran against and whether the tree was dirty.
 `audit_state.py init` captures both; copy them in so the report is reproducible.
+
+## Runtime intake - the live target the audit may touch
+
+Complete this intake before any lens runs. A lens never starts without it.
+
+Record five items in `.readiness-audit/runtime-context.json` with
+`scripts/runtime_context.py`:
+
+- URL of the live target.
+- Environment name, such as staging or prod.
+- Role the audit uses, such as readonly auditor.
+- Credential reference, such as the vault path or variable name. Store the
+  name only. Store no value.
+- Scope notes, such as pages in scope and areas to avoid.
+
+Apply the fail-fast gate before lenses start. Run `check_runtime_ready`.
+It fails when the target is missing or unreachable.
+
+- Missing target means no runtime lens. Record the skip with a reason and
+  run the other lenses.
+- Unreachable target means abort. Report the message and start no lens.
+
+Keep secrets out of the trail. Findings, logs, screenshots, reports, and
+exports carry the credential reference only. The write path redacts values
+that look like a password, token, secret, or API key and stores
+`[REDACTED]` instead.
+
+Stay read-only after login. The network log may show GET, HEAD, OPTIONS,
+and one POST login. Any other POST, PUT, PATCH, or DELETE is a violation.
+Inspect mutating controls for presence and state only. Record the
+inspection with `mark_inspected_not_activated`. Activate nothing.

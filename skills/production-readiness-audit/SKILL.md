@@ -41,6 +41,7 @@ find, and what you simply cannot see from here.
 ├── state.json                      # stage pointer, git ref, lens decisions
 ├── context.md                      # Stage 1 - criticality, RTO/RPO, scale, threat model
 ├── scope.md                        # Stage 1 - what you can and cannot see
+├── runtime-context.json            # Stage 1 - live target, role, credential reference only
 ├── evidence/
 │   ├── inventory.json              # Stage 2 - what exists
 │   ├── absence-ledger.{json,md}    # Stage 2 - what was searched for
@@ -134,6 +135,31 @@ context: the same missing rate limiter is a P0 on an unauthenticated public API
 and a P3 on an internal tool behind a VPN. If the user is present, confirm
 criticality, RTO/RPO, and threat model with them. If not, infer, mark every
 inferred value `assumed`, and flag the assumptions that would change findings.
+
+### Runtime intake - before any lens
+
+Read `references/context-intake.md` for the runtime intake. Record the live
+target before any lens starts:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime_context.py" init <root> \
+  --url https://staging.example.com \
+  --environment staging \
+  --role readonly-auditor \
+  --credential-ref vault:staging/readonly-user
+```
+
+Store the credential reference only. Store no value. Check readiness before
+dispatching lenses:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime_context.py" check <root>
+```
+
+If no live target exists, skip the runtime lens and record the reason. If the
+target is unreachable, abort before lenses start and report the message. The
+runtime lens uses reads only, one login POST at most, and inspects mutating
+controls without activating them.
 
 ## Stage 2 - the evidence pass
 
