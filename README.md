@@ -17,7 +17,7 @@ and operational blind spots.
 ## What you get
 
 - A production readiness checklist tailored to the repository and its context.
-- One shared evidence pass, reused by up to seven specialist review lenses.
+- One shared evidence pass, reused by up to eight specialist review lenses.
 - An absence ledger that distinguishes **confirmed**, **not found**, and
   **unverified** controls.
 - A validated, CTO-readable verdict: **SHIP**, **FIX THEN SHIP**, or
@@ -139,7 +139,7 @@ python3 scripts/export_report.py <project-root>
 writes a shareable document set to `.readiness-audit/export/<git-ref>-<time>/`:
 
 - `report.tex` — the full audit: verdict, context, scope, evidence summary, all
-  seven lens sections, and an appendix of everything that could not be verified.
+  eight lens sections, and an appendix of everything that could not be verified.
 - `report-<lens>.tex` — one document per specialist, so a security engineer gets
   a report without the frontend findings and the other way round.
 - `report.md` — the plain-markdown trail, for anyone without a TeX toolchain.
@@ -248,7 +248,7 @@ publish anything.
 ## Use it with other AI coding agents
 
 The one-command marketplace installation above is for **Claude Code**. The
-audit itself is portable: its workflow, seven specialist lenses, and Python
+audit itself is portable: its workflow, eight specialist lenses, and Python
 validation scripts live in this repository and can be used by other coding
 agents too.
 
@@ -362,8 +362,8 @@ Stage 4  Validate     Reject findings that do not meet evidence rules
 Stage 5  Report       Assemble the go/no-go report and remaining judgement
 ```
 
-The seven lenses cover security, backend, database, DevOps, QA, frontend, and
-AI security. Lenses with no signal are explicitly skipped rather than inventing
+The eight lenses cover security, backend, database, DevOps, QA, frontend,
+AI security, and runtime (live-app QA, runs only with a live target). Lenses with no signal are explicitly skipped rather than inventing
 findings.
 
 ## Evidence, not confident guesses
@@ -386,7 +386,7 @@ silence in repository-owned infrastructure-as-code can become **not found**.
 
 ## Design principles
 
-**One evidence pass, seven evaluations.** The repository is scanned once. Every
+**One evidence pass, eight evaluations.** The repository is scanned once. Every
 specialist lens works from that same evidence pack, reducing cost and avoiding
 contradictory claims.
 
