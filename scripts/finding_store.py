@@ -40,11 +40,11 @@ STATES = {"CONFIRMED", "NOT_FOUND", "UNVERIFIED"}
 SEVERITIES = {"P0", "P1", "P2", "P3"}
 DECISIONS = {"SHIP", "FIX_THEN_SHIP", "HOLD"}
 
-LENS_ORDER = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security"]
+LENS_ORDER = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security", "runtime"]
 LENS_LABEL = {
     "security": "Security", "backend": "Backend", "frontend": "Frontend",
     "devops": "DevOps", "qa": "QA", "database": "Database",
-    "ai-security": "AI security",
+    "ai-security": "AI security", "runtime": "Runtime",
 }
 
 # Fields a lens may set. `impact` is the one written for a human who will never

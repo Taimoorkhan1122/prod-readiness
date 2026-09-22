@@ -113,7 +113,7 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["status"], "unavailable")
         self.assertEqual(snapshot["findings"], [])
         self.assertEqual(snapshot["counts"]["total"], 0)
-        self.assertEqual(len(snapshot["lenses"]), 7)
+        self.assertEqual(len(snapshot["lenses"]), 8)
 
     def test_running_audit_reports_stage_mode_and_lens_progress(self):
         root = self._root()

@@ -31,7 +31,7 @@ STAGES = [
     "4-validation",
     "5-report",
 ]
-LENSES = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security"]
+LENSES = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security", "runtime"]
 
 
 def _now():

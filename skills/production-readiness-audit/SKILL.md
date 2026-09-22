@@ -41,6 +41,10 @@ find, and what you simply cannot see from here.
 ├── state.json                      # stage pointer, git ref, lens decisions
 ├── context.md                      # Stage 1 - criticality, RTO/RPO, scale, threat model
 ├── scope.md                        # Stage 1 - what you can and cannot see
+├── runtime-context.json            # Stage 1 - live target, role, credential reference only
+├── runtime-coverage.json           # Stage 3 - screens walked per viewport
+├── runtime-sqa.md                  # Stage 3 - SQA style runtime report
+├── runtime-bugs.csv                # Stage 3 - one row per runtime bug
 ├── evidence/
 │   ├── inventory.json              # Stage 2 - what exists
 │   ├── absence-ledger.{json,md}    # Stage 2 - what was searched for
@@ -135,6 +139,31 @@ and a P3 on an internal tool behind a VPN. If the user is present, confirm
 criticality, RTO/RPO, and threat model with them. If not, infer, mark every
 inferred value `assumed`, and flag the assumptions that would change findings.
 
+### Runtime intake - before any lens
+
+Read `references/context-intake.md` for the runtime intake. Record the live
+target before any lens starts:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime_context.py" init <root> \
+  --url https://staging.example.com \
+  --environment staging \
+  --role readonly-auditor \
+  --credential-ref vault:staging/readonly-user
+```
+
+Store the credential reference only. Store no value. Check readiness before
+dispatching lenses:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/runtime_context.py" check <root>
+```
+
+If no live target exists, skip the runtime lens and record the reason. If the
+target is unreachable, abort before lenses start and report the message. The
+runtime lens uses reads only, one login POST at most, and inspects mutating
+controls without activating them.
+
 ## Stage 2 - the evidence pass
 
 ```bash
@@ -164,16 +193,19 @@ paid for seven times.
 ## Stage 3 - the lenses
 
 Read `references/lens-dispatch.md`, then dispatch. In short: decide which lenses
-have signal, record the skips with reasons, and run two waves - security,
-backend, database first, then devops, qa, frontend, ai-security, so the second
-wave can reference the first's findings instead of duplicating them.
+have signal, record the skips with reasons, and run three waves - security,
+backend, database first, then devops, qa, frontend, ai-security, then runtime
+only when a live URL is present, so each later wave can reference the earlier
+waves findings instead of duplicating them.
 
 Agent types are `prod-readiness:lens-security`, `lens-backend`, `lens-frontend`,
-`lens-devops`, `lens-qa`, `lens-database`, `lens-ai-security`.
+`lens-devops`, `lens-qa`, `lens-database`, `lens-ai-security`, `lens-runtime`.
 
 A lens with no signal is skipped and the skip is declared in the report. The AI
 security lens in particular states CONFIRMED NOT PRESENT and stops rather than
-inventing risks for a system with no model calls in it.
+inventing risks for a system with no model calls in it. The runtime lens is
+skipped with a recorded reason when there is no live URL, or when the target
+is unreachable at intake, and the verdict stays valid without it.
 
 Run `validate_findings.py` between waves. If a lens produced errors, send that
 lens back with the validator output rather than editing its findings yourself.

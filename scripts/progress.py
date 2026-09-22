@@ -2,7 +2,7 @@
 """
 progress.py - per-lens heartbeats, so a running audit is not a black box.
 
-Seven lens agents run in parallel by default (see audit_state.py LENSES).
+Eight lens agents run in parallel by default (see audit_state.py LENSES).
 Until a lens writes findings/<lens>.json, the dashboard has no way to tell
 "working" from "stuck" from "never started". This gives each lens a place to
 say what it is doing right now.
@@ -27,7 +27,7 @@ from pathlib import Path
 
 DIRNAME = ".readiness-audit"
 
-LENSES = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security"]
+LENSES = ["security", "backend", "frontend", "devops", "qa", "database", "ai-security", "runtime"]
 PHASES = ["started", "evidence-read", "analyzing", "writing-findings", "done"]
 
 # A lens is treated as having gone quiet if its most recent heartbeat is

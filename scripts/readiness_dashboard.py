@@ -120,7 +120,7 @@ DASHBOARD_HTML = """<!doctype html>
       .band-head { display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; }
       .band-head p { color:var(--muted); font-size:.87rem; }
 
-      .matrix { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-top:16px; }
+      .matrix { display:grid; grid-template-columns:repeat(8,1fr); gap:8px; margin-top:16px; }
       .lens { min-height:88px; padding:12px 11px; border-radius:12px; border:1px solid var(--line);
         background:var(--white); display:flex; flex-direction:column; gap:6px; text-align:left;
         transition:transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
@@ -375,7 +375,7 @@ DASHBOARD_HTML = """<!doctype html>
           </button>`;
         }).join('');
         return `<section class="band"><div class="band-head"><h2>What was reviewed</h2>
-          <p>Seven specialists, each writing only its own findings.</p></div>
+          <p>Eight specialists, each writing only its own findings.</p></div>
           <div class="matrix">${cells}</div></section>`;
       }
 

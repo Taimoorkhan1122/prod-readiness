@@ -1,0 +1,1 @@
+{"currency": "USD", "endpoint": "/api/cart", "items": [{"id": "a1", "plan": "Starter", "price": 9}, {"id": "a2", "plan": "Team", "price": 33}], "status": 200, "total": 42}
