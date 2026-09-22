@@ -10,6 +10,11 @@
     "production-readiness",
     "security",
     "reliability",
-    "code-review"
+    "code-review",
+    "pre-launch",
+    "go-no-go",
+    "launch-checklist",
+    "readiness-check",
+    "multi-agent"
   ]
 }
